@@ -115,7 +115,7 @@ TODAS_INDUSTRIAS = [i for i in TODAS_INDUSTRIAS if i.strip() != '']
 TOTAL_INDUSTRIAS_GERAL = len(TODAS_INDUSTRIAS)
 
 # ============================================================
-# FILTROS
+# FILTROS (SEM MODO GAP)
 # ============================================================
 st.sidebar.header("🎯 Filtros")
 
@@ -135,7 +135,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 if not st.query_params:
-    for key in ['pasta', 'coordenador', 'vendedor', 'coligacao', 'ano', 'mes', 'industria_filtro', 'modo_gap', 'meta_ativa', 'meta_total', 'janela_meses',
+    for key in ['pasta', 'coordenador', 'vendedor', 'coligacao', 'ano', 'mes', 'industria_filtro', 'meta_ativa', 'meta_total', 'janela_meses',
                 'municipio_filtro', 'canal_filtro', 'segmento_filtro']:
         st.session_state.pop(key, None)
 
@@ -258,11 +258,6 @@ industria_selecionada_lista = st.sidebar.multiselect(
 )
 st.session_state['industria_filtro'] = industria_selecionada_lista
 
-# -------------------- MODO GAP (MOVIADO PARA ABAIXO DA INDÚSTRIA) --------------------
-if 'modo_gap' not in st.session_state: st.session_state['modo_gap'] = False
-modo_gap = st.sidebar.checkbox("🔍 Mostrar apenas NÃO positivadas (GAP)", value=st.session_state['modo_gap'], key='modo_gap_check')
-st.session_state['modo_gap'] = modo_gap
-
 # -------------------- METAS AJUSTÁVEIS --------------------
 st.sidebar.divider()
 st.sidebar.header("🎯 Metas")
@@ -348,7 +343,7 @@ else:
     df_historico_janela = df_historico
 
 # ============================================================
-# CARTEIRA ATIVA (USANDO JANELA)
+# CARTEIRA ATIVA (USANDO JANELA) - COM DOWNLOADS
 # ============================================================
 carteira_ativa_total = df_historico_janela[df_historico_janela['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
 positivados_periodo = df_filtrado[df_filtrado['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
@@ -380,15 +375,52 @@ if not mensal_pos.empty:
 else:
     st.info("Sem dados mensais para exibir.")
 
+# Clientes sem venda (carteira ativa) com downloads
 if clientes_sem_venda_ativos:
-    with st.expander(f"🔴 {len(clientes_sem_venda_ativos)} clientes sem venda no mês"):
-        df_sem_venda_ativos = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_ativos)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao']]
-        df_sem_venda_ativos.columns = ['Código', 'Nome', 'Coligação']
+    df_sem_venda_ativos = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_ativos)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'Municipio', 'Canal', 'Segmento']]
+    df_sem_venda_ativos.columns = ['Código', 'Nome', 'Coligação', 'Município', 'Canal', 'Segmento']
+
+    with st.expander(f"🔴 {len(clientes_sem_venda_ativos)} clientes sem venda no mês (Carteira Ativa)"):
         st.dataframe(df_sem_venda_ativos, use_container_width=True, hide_index=True)
+
+    # Download Excel
+    output_ativa = BytesIO()
+    with pd.ExcelWriter(output_ativa, engine='openpyxl') as writer:
+        df_sem_venda_ativos.to_excel(writer, index=False, sheet_name='Sem Venda Ativa')
+    st.download_button(
+        "📥 Baixar Excel (Sem Venda Ativa)",
+        data=output_ativa.getvalue(),
+        file_name=f'sem_venda_ativa_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        use_container_width=True
+    )
+
+    # Download PDF (HTML)
+    html_ativa = f"""
+    <html><head><meta charset="UTF-8"><style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1 {{ font-size: 18px; color: #1a3a4a; }}
+        table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
+        th {{ background-color: #1a3a4a; color: white; padding: 6px; }}
+        td {{ padding: 4px; border: 1px solid #ddd; }}
+    </style></head><body>
+        <h1>Clientes sem venda no mês (Carteira Ativa)</h1>
+        <p>Vendedor: {vendedor_selecionado if vendedor_selecionado != 'Todos' else 'Todos'} | Período: {mes_selecionado}/{ano_selecionado} | Janela: {janela_meses} meses</p>
+        {df_sem_venda_ativos.to_html(index=False)}
+    </body></html>
+    """
+    st.download_button(
+        "📥 Baixar PDF (Sem Venda Ativa)",
+        data=html_ativa.encode('utf-8'),
+        file_name=f'sem_venda_ativa_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
+        mime='text/html',
+        use_container_width=True
+    )
+    st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 st.divider()
 
 # ============================================================
-# CARTEIRA TOTAL
+# CARTEIRA TOTAL - COM DOWNLOADS
 # ============================================================
 if vendedor_selecionado != "Todos":
     total_clientes_base = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].nunique()
@@ -420,11 +452,48 @@ col4, col5 = st.columns(2)
 col4.metric("Cobertura Média", f"{cobertura_media:.1f} ind/cliente")
 col5.metric("Cobertura Total", f"{cobertura_total} coberturas")
 
+# Clientes sem venda (carteira total) com downloads
 if clientes_sem_venda_carteira:
+    df_sem_venda_total = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_carteira)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'Municipio', 'Canal', 'Segmento']]
+    df_sem_venda_total.columns = ['Código', 'Nome', 'Coligação', 'Município', 'Canal', 'Segmento']
+
     with st.expander(f"🔴 {len(clientes_sem_venda_carteira)} clientes sem venda (Carteira Total)"):
-        df_sem_venda_total = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_carteira)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao']]
-        df_sem_venda_total.columns = ['Código', 'Nome', 'Coligação']
         st.dataframe(df_sem_venda_total, use_container_width=True, hide_index=True)
+
+    # Download Excel
+    output_total = BytesIO()
+    with pd.ExcelWriter(output_total, engine='openpyxl') as writer:
+        df_sem_venda_total.to_excel(writer, index=False, sheet_name='Sem Venda Total')
+    st.download_button(
+        "📥 Baixar Excel (Sem Venda Total)",
+        data=output_total.getvalue(),
+        file_name=f'sem_venda_total_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        use_container_width=True
+    )
+
+    # Download PDF (HTML)
+    html_total = f"""
+    <html><head><meta charset="UTF-8"><style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1 {{ font-size: 18px; color: #1a3a4a; }}
+        table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
+        th {{ background-color: #1a3a4a; color: white; padding: 6px; }}
+        td {{ padding: 4px; border: 1px solid #ddd; }}
+    </style></head><body>
+        <h1>Clientes sem venda (Carteira Total)</h1>
+        <p>Vendedor: {vendedor_selecionado if vendedor_selecionado != 'Todos' else 'Todos'} | Período: {mes_selecionado}/{ano_selecionado}</p>
+        {df_sem_venda_total.to_html(index=False)}
+    </body></html>
+    """
+    st.download_button(
+        "📥 Baixar PDF (Sem Venda Total)",
+        data=html_total.encode('utf-8'),
+        file_name=f'sem_venda_total_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
+        mime='text/html',
+        use_container_width=True
+    )
+    st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 st.divider()
 
 # ============================================================
@@ -503,16 +572,6 @@ st.plotly_chart(fig_cob, use_container_width=True)
 st.dataframe(perf_vendedor[['Vendedor', 'Pasta', 'Total_Clientes', 'Clientes_Ativos_Hist', 'Clientes_Positivados',
                             '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media', 'Cobertura_Total']],
              use_container_width=True, hide_index=True)
-st.divider()
-
-# ============================================================
-# ANÁLISE DE GAP (SEM REDUNDÂNCIA)
-# ============================================================
-st.subheader("🔍 Análise de GAP")
-if clientes_sem_venda_ativos:
-    st.warning(f"Existem {len(clientes_sem_venda_ativos)} clientes ativos (janela) que não compraram no mês atual.")
-else:
-    st.success("Todos os clientes ativos na janela compraram no mês atual.")
 st.divider()
 
 # ============================================================
@@ -797,8 +856,6 @@ if st.button("Gerar Relatório Gerencial (HTML)"):
     <div class="metric-box"><strong>{cobertura_media:.1f}</strong> Cobertura Média</div>
     <h2>Performance por Vendedor</h2>
     {perf_vendedor[['Vendedor', 'Pasta', '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media']].to_html(index=False)}
-    <h2>GAP - Clientes sem compra no mês</h2>
-    <p>{len(clientes_sem_venda_ativos)} cliente(s) ativos sem compra.</p>
     <h2>Ranking de Crescimento (Base Ativa)</h2>
     {df_ranking[['Vendedor', 'Pasta', 'Cresc. Ativa (pp)']].to_html(index=False) if not df_ranking.empty else '<p>Não disponível.</p>'}
     <div class="footer">4 Elos Distribuidora Ltda. - Centro de Custo 622</div>
