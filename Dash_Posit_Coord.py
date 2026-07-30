@@ -135,7 +135,8 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 if not st.query_params:
-    for key in ['pasta', 'coordenador', 'vendedor', 'coligacao', 'ano', 'mes', 'industria_filtro', 'modo_gap', 'meta_ativa', 'meta_total', 'janela_meses']:
+    for key in ['pasta', 'coordenador', 'vendedor', 'coligacao', 'ano', 'mes', 'industria_filtro', 'modo_gap', 'meta_ativa', 'meta_total', 'janela_meses',
+                'municipio_filtro', 'canal_filtro', 'segmento_filtro']:
         st.session_state.pop(key, None)
 
 # -------------------- FILTRO DE PASTA --------------------
@@ -179,6 +180,34 @@ lista_coligacoes = ["Todas"] + sorted(coligacoes_filtradas)
 if 'coligacao' not in st.session_state: st.session_state['coligacao'] = 'Todas'
 coligacao_selecionada = st.sidebar.selectbox("Coligação", lista_coligacoes, index=lista_coligacoes.index(st.session_state['coligacao']), key='coligacao_select')
 st.session_state['coligacao'] = coligacao_selecionada
+
+# -------------------- NOVOS FILTROS: MUNICÍPIO, CANAL, SEGMENTO (MULTISELECT) --------------------
+# Município
+if 'municipio_filtro' not in st.session_state: st.session_state['municipio_filtro'] = []
+municipio_opcoes = sorted(df_base['Municipio'].dropna().unique())
+municipio_selecionado = st.sidebar.multiselect(
+    "Município(s)", options=municipio_opcoes, default=st.session_state['municipio_filtro'],
+    placeholder="Selecione..."
+)
+st.session_state['municipio_filtro'] = municipio_selecionado
+
+# Canal
+if 'canal_filtro' not in st.session_state: st.session_state['canal_filtro'] = []
+canal_opcoes = sorted(df_base['Canal'].dropna().unique())
+canal_selecionado = st.sidebar.multiselect(
+    "Canal(is)", options=canal_opcoes, default=st.session_state['canal_filtro'],
+    placeholder="Selecione..."
+)
+st.session_state['canal_filtro'] = canal_selecionado
+
+# Segmento
+if 'segmento_filtro' not in st.session_state: st.session_state['segmento_filtro'] = []
+segmento_opcoes = sorted(df_base['Segmento'].dropna().unique())
+segmento_selecionado = st.sidebar.multiselect(
+    "Segmento(s)", options=segmento_opcoes, default=st.session_state['segmento_filtro'],
+    placeholder="Selecione..."
+)
+st.session_state['segmento_filtro'] = segmento_selecionado
 
 # -------------------- ANO --------------------
 anos_disponiveis = sorted(df_merged['Ano'].dropna().unique())
@@ -263,6 +292,14 @@ if vendedor_selecionado != "Todos":
     df_filtrado = df_filtrado[df_filtrado['nome_vendedor'] == vendedor_selecionado]
 if coligacao_selecionada != "Todas":
     df_filtrado = df_filtrado[df_filtrado['Cliente_Coligacao'] == coligacao_selecionada]
+# Novos filtros de categoria
+if municipio_selecionado:
+    df_filtrado = df_filtrado[df_filtrado['Municipio'].isin(municipio_selecionado)]
+if canal_selecionado:
+    df_filtrado = df_filtrado[df_filtrado['Canal'].isin(canal_selecionado)]
+if segmento_selecionado:
+    df_filtrado = df_filtrado[df_filtrado['Segmento'].isin(segmento_selecionado)]
+
 if ano_selecionado != "Todos":
     df_filtrado = df_filtrado[df_filtrado['Ano'] == int(ano_selecionado)]
 if mes_selecionado != "Todos":
@@ -272,7 +309,7 @@ if industria_selecionada_lista:
     df_filtrado = df_filtrado[df_filtrado['Nome_Fabricante'].isin(industria_selecionada_lista)]
 
 # ============================================================
-# HISTÓRICO (PRÉ-FILTRADO)
+# HISTÓRICO (PRÉ-FILTRADO) - também aplicar novos filtros
 # ============================================================
 df_historico = df_merged.copy()
 if coordenador_selecionado != "Todos":
@@ -280,6 +317,14 @@ if coordenador_selecionado != "Todos":
 if vendedor_selecionado != "Todos":
     df_historico = df_historico[df_historico['nome_vendedor'] == vendedor_selecionado]
 df_historico = df_historico[df_historico['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
+if coligacao_selecionada != "Todas":
+    df_historico = df_historico[df_historico['Cliente_Coligacao'] == coligacao_selecionada]
+if municipio_selecionado:
+    df_historico = df_historico[df_historico['Municipio'].isin(municipio_selecionado)]
+if canal_selecionado:
+    df_historico = df_historico[df_historico['Canal'].isin(canal_selecionado)]
+if segmento_selecionado:
+    df_historico = df_historico[df_historico['Segmento'].isin(segmento_selecionado)]
 
 # ============================================================
 # APLICAR JANELA MÓVEL (BASE ATIVA)
@@ -392,6 +437,13 @@ if coordenador_selecionado != "Todos":
     df_base_perf = df_base_perf[df_base_perf['Nome_Coordenador'] == coordenador_selecionado]
 if vendedor_selecionado != "Todos":
     df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor_selecionado]
+# Aplicar filtros de categoria também na performance (já que afeta a carteira)
+if municipio_selecionado:
+    df_base_perf = df_base_perf[df_base_perf['Municipio'].isin(municipio_selecionado)]
+if canal_selecionado:
+    df_base_perf = df_base_perf[df_base_perf['Canal'].isin(canal_selecionado)]
+if segmento_selecionado:
+    df_base_perf = df_base_perf[df_base_perf['Segmento'].isin(segmento_selecionado)]
 
 vendedores_base = df_base_perf['nome_vendedor_base'].dropna().unique()
 perf_list = []
@@ -455,33 +507,43 @@ st.dataframe(perf_vendedor[['Vendedor', 'Pasta', 'Total_Clientes', 'Clientes_Ati
 st.divider()
 
 # ============================================================
-# ANÁLISE DE GAP GERAL
+# ANÁLISE DE GAP (SEM REDUNDÂNCIA)
 # ============================================================
 st.subheader("🔍 Análise de GAP")
 if clientes_sem_venda_ativos:
     st.warning(f"Existem {len(clientes_sem_venda_ativos)} clientes ativos (janela) que não compraram no mês atual.")
 else:
     st.success("Todos os clientes ativos na janela compraram no mês atual.")
-if clientes_sem_venda_carteira:
-    with st.expander(f"📋 {len(clientes_sem_venda_carteira)} clientes sem compra (Carteira Total)"):
-        df_gap = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_carteira)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
-        df_gap.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
-        st.dataframe(df_gap, use_container_width=True, hide_index=True)
 st.divider()
 
 # ============================================================
-# RANKING DE CRESCIMENTO CORRIGIDO
+# RANKING DE CRESCIMENTO (CORRIGIDO)
 # ============================================================
 st.subheader("📈 Ranking de Crescimento")
 
-if mes_selecionado != "Todos" and ano_selecionado != "Todos":
-    mes_atual = int(mes_selecionado.split(' - ')[0])
+ano_atual = None
+mes_atual_num = None
+if ano_selecionado != "Todos":
     ano_atual = int(ano_selecionado)
+else:
+    ano_atual = df_merged['Ano'].max()
 
-    # Construir período anterior (mesmo mês do ano anterior)
-    periodo_atual = [(ano_atual, mes_atual)]
-    periodo_anterior = [(ano_atual - 1, mes_atual)]
+if mes_selecionado != "Todos":
+    mes_atual_num = int(mes_selecionado.split(' - ')[0])
+else:
+    mes_atual_num = None
 
+if mes_atual_num is not None:
+    periodo_atual = [(ano_atual, mes_atual_num)]
+    periodo_anterior = [(ano_atual - 1, mes_atual_num)]
+elif ano_selecionado != "Todos":
+    periodo_atual = [(ano_atual, m) for m in range(1, 13)]
+    periodo_anterior = [(ano_atual - 1, m) for m in range(1, 13)]
+else:
+    periodo_atual = []
+    periodo_anterior = []
+
+if periodo_atual and periodo_anterior:
     df_ant = df_merged.copy()
     if coordenador_selecionado != "Todos":
         df_ant = df_ant[df_ant['Nome_Coordenador'] == coordenador_selecionado]
@@ -490,6 +552,12 @@ if mes_selecionado != "Todos" and ano_selecionado != "Todos":
     df_ant = df_ant[df_ant['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
     if coligacao_selecionada != "Todas":
         df_ant = df_ant[df_ant['Cliente_Coligacao'] == coligacao_selecionada]
+    if municipio_selecionado:
+        df_ant = df_ant[df_ant['Municipio'].isin(municipio_selecionado)]
+    if canal_selecionado:
+        df_ant = df_ant[df_ant['Canal'].isin(canal_selecionado)]
+    if segmento_selecionado:
+        df_ant = df_ant[df_ant['Segmento'].isin(segmento_selecionado)]
     if industria_selecionada_lista:
         df_ant = df_ant[df_ant['Nome_Fabricante'].isin(industria_selecionada_lista)]
 
@@ -527,50 +595,75 @@ if mes_selecionado != "Todos" and ano_selecionado != "Todos":
     st.markdown("**Crescimento sobre Carteira Total**")
     st.dataframe(df_ranking[['Vendedor', 'Pasta', '% Atual (Total)', '% Anterior (Total)', 'Cresc. Total (pp)']], use_container_width=True, hide_index=True)
 else:
-    st.info("Selecione um mês e ano específicos para visualizar o ranking de crescimento.")
+    st.info("Selecione um mês ou ano específico para visualizar o ranking de crescimento.")
 st.divider()
 
 # ============================================================
-# NOVOS CARDS: MUNICÍPIO, CANAL, SEGMENTO (EIXOS X CORRIGIDOS)
+# NOVOS CARDS: MUNICÍPIO, CANAL, SEGMENTO (% SOBRE ATIVA + DOWNLOAD)
 # ============================================================
-def criar_grafico_categoria(df, coluna, titulo):
-    df_agrupado = df.groupby([coluna, 'Mês_Ano']).agg(
-        Clientes_Positivados=('codigo_cliente', 'nunique')
-    ).reset_index()
-    # Ordenar meses
-    meses_ordenados = sorted(df_agrupado['Mês_Ano'].unique())
-    df_agrupado['Mês_Ano'] = pd.Categorical(df_agrupado['Mês_Ano'], categories=meses_ordenados, ordered=True)
-    df_agrupado = df_agrupado.sort_values(['Mês_Ano', coluna])
-    
-    fig = px.line(df_agrupado, x='Mês_Ano', y='Clientes_Positivados', color=coluna,
-                  title=f'Clientes Positivados por {titulo} (mensal)')
-    fig.update_layout(xaxis=dict(type='category', categoryorder='array', categoryarray=meses_ordenados))
-    return fig, df_agrupado
+def grafico_categoria_pct(df_filtrado_mes, df_janela, coluna, titulo):
+    posit = df_filtrado_mes.groupby(coluna)['codigo_cliente'].nunique().reset_index()
+    posit.columns = [coluna, 'Positivados']
+    ativos = df_janela.groupby(coluna)['codigo_cliente'].nunique().reset_index()
+    ativos.columns = [coluna, 'Ativos_Janela']
+    coberturas = df_filtrado_mes.groupby(coluna).apply(
+        lambda x: x[['codigo_cliente', 'Nome_Fabricante']].drop_duplicates().shape[0]
+    ).reset_index(name='Coberturas')
+    total_clientes = df_base.groupby(coluna)['codigo_cliente'].nunique().reset_index()
+    total_clientes.columns = [coluna, 'Total_Clientes']
 
-st.subheader("📍 Positivação por Município")
-fig_munic, df_munic = criar_grafico_categoria(df_filtrado, 'Municipio', 'Município')
-st.plotly_chart(fig_munic, use_container_width=True)
-with st.expander("📊 Tabela de percentuais por município"):
-    st.dataframe(df_munic, use_container_width=True, hide_index=True)
+    df_merged_cat = posit.merge(ativos, on=coluna, how='left').merge(coberturas, on=coluna, how='left').merge(total_clientes, on=coluna, how='left')
+    df_merged_cat['%_Positivacao'] = (df_merged_cat['Positivados'] / df_merged_cat['Ativos_Janela'] * 100).round(1)
+    df_merged_cat = df_merged_cat.sort_values('%_Positivacao', ascending=True)
 
-st.divider()
-st.subheader("🏢 Positivação por Canal")
-fig_canal, df_canal = criar_grafico_categoria(df_filtrado, 'Canal', 'Canal')
-st.plotly_chart(fig_canal, use_container_width=True)
-with st.expander("📊 Tabela de percentuais por canal"):
-    st.dataframe(df_canal, use_container_width=True, hide_index=True)
+    fig = px.bar(df_merged_cat, y=coluna, x='%_Positivacao', text='%_Positivacao',
+                 title=f'% Positivados no mês sobre Ativos (Janela) - {titulo}',
+                 orientation='h', color='%_Positivacao', color_continuous_scale='Blues')
+    fig.update_traces(textposition='outside', texttemplate='%{text}%')
+    fig.update_layout(xaxis_title="% sobre Ativos", yaxis_title="", xaxis_range=[0, 100])
+    return fig, df_merged_cat
 
-st.divider()
-st.subheader("🏷️ Positivação por Segmento")
-fig_seg, df_seg = criar_grafico_categoria(df_filtrado, 'Segmento', 'Segmento')
-st.plotly_chart(fig_seg, use_container_width=True)
-with st.expander("📊 Tabela de percentuais por segmento"):
-    st.dataframe(df_seg, use_container_width=True, hide_index=True)
+if mes_selecionado != "Todos":
+    # Município
+    st.subheader("📍 Positivação por Município")
+    fig_munic, df_munic = grafico_categoria_pct(df_filtrado, df_historico_janela, 'Municipio', 'Município')
+    st.plotly_chart(fig_munic, use_container_width=True)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_munic.to_excel(writer, index=False, sheet_name='Municipio')
+    st.download_button("📥 Baixar Excel (Município)", data=output.getvalue(),
+                       file_name=f'municipio_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    st.divider()
 
-st.divider()
+    # Canal
+    st.subheader("🏢 Positivação por Canal")
+    fig_canal, df_canal = grafico_categoria_pct(df_filtrado, df_historico_janela, 'Canal', 'Canal')
+    st.plotly_chart(fig_canal, use_container_width=True)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_canal.to_excel(writer, index=False, sheet_name='Canal')
+    st.download_button("📥 Baixar Excel (Canal)", data=output.getvalue(),
+                       file_name=f'canal_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    st.divider()
+
+    # Segmento
+    st.subheader("🏷️ Positivação por Segmento")
+    fig_seg, df_seg = grafico_categoria_pct(df_filtrado, df_historico_janela, 'Segmento', 'Segmento')
+    st.plotly_chart(fig_seg, use_container_width=True)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_seg.to_excel(writer, index=False, sheet_name='Segmento')
+    st.download_button("📥 Baixar Excel (Segmento)", data=output.getvalue(),
+                       file_name=f'segmento_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    st.divider()
+else:
+    st.info("Selecione um mês para visualizar a análise por município, canal e segmento.")
 
 # ============================================================
-# OPORTUNIDADES CRUZADAS
+# OPORTUNIDADES CRUZADAS (COM DOWNLOAD EXCEL)
 # ============================================================
 st.subheader("🔀 Oportunidades Cruzadas")
 
@@ -595,6 +688,14 @@ if base_op and comp_op:
         df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
         df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
         st.dataframe(df_op, use_container_width=True, hide_index=True)
+        # Download Excel
+        output_op = BytesIO()
+        with pd.ExcelWriter(output_op, engine='openpyxl') as writer:
+            df_op.to_excel(writer, index=False, sheet_name='Oportunidades')
+        st.download_button("📥 Baixar Excel (Oportunidades)", data=output_op.getvalue(),
+                           file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                           use_container_width=True)
     else:
         st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
 else:
@@ -698,7 +799,7 @@ if st.button("Gerar Relatório Gerencial (HTML)"):
     <h2>Performance por Vendedor</h2>
     {perf_vendedor[['Vendedor', 'Pasta', '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media']].to_html(index=False)}
     <h2>GAP - Clientes sem compra no mês</h2>
-    <p>{len(clientes_sem_venda_carteira)} cliente(s) sem compra.</p>
+    <p>{len(clientes_sem_venda_ativos)} cliente(s) ativos sem compra.</p>
     <h2>Ranking de Crescimento (Base Ativa)</h2>
     {df_ranking[['Vendedor', 'Pasta', 'Cresc. Ativa (pp)']].to_html(index=False) if not df_ranking.empty else '<p>Não disponível.</p>'}
     <div class="footer">4 Elos Distribuidora Ltda. - Centro de Custo 622</div>
