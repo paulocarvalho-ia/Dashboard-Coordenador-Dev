@@ -575,88 +575,6 @@ st.dataframe(perf_vendedor[['Vendedor', 'Pasta', 'Total_Clientes', 'Clientes_Ati
 st.divider()
 
 # ============================================================
-# RANKING DE CRESCIMENTO (CORRIGIDO)
-# ============================================================
-st.subheader("📈 Ranking de Crescimento")
-
-ano_atual = None
-mes_atual_num = None
-if ano_selecionado != "Todos":
-    ano_atual = int(ano_selecionado)
-else:
-    ano_atual = df_merged['Ano'].max()
-
-if mes_selecionado != "Todos":
-    mes_atual_num = int(mes_selecionado.split(' - ')[0])
-else:
-    mes_atual_num = None
-
-if mes_atual_num is not None:
-    periodo_atual = [(ano_atual, mes_atual_num)]
-    periodo_anterior = [(ano_atual - 1, mes_atual_num)]
-elif ano_selecionado != "Todos":
-    periodo_atual = [(ano_atual, m) for m in range(1, 13)]
-    periodo_anterior = [(ano_atual - 1, m) for m in range(1, 13)]
-else:
-    periodo_atual = []
-    periodo_anterior = []
-
-if periodo_atual and periodo_anterior:
-    df_ant = df_merged.copy()
-    if coordenador_selecionado != "Todos":
-        df_ant = df_ant[df_ant['Nome_Coordenador'] == coordenador_selecionado]
-    if vendedor_selecionado != "Todos":
-        df_ant = df_ant[df_ant['nome_vendedor'] == vendedor_selecionado]
-    df_ant = df_ant[df_ant['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
-    if coligacao_selecionada != "Todas":
-        df_ant = df_ant[df_ant['Cliente_Coligacao'] == coligacao_selecionada]
-    if municipio_selecionado:
-        df_ant = df_ant[df_ant['Municipio'].isin(municipio_selecionado)]
-    if canal_selecionado:
-        df_ant = df_ant[df_ant['Canal'].isin(canal_selecionado)]
-    if segmento_selecionado:
-        df_ant = df_ant[df_ant['Segmento'].isin(segmento_selecionado)]
-    if industria_selecionada_lista:
-        df_ant = df_ant[df_ant['Nome_Fabricante'].isin(industria_selecionada_lista)]
-
-    cond_ant = pd.Series(False, index=df_ant.index)
-    for a, m in periodo_anterior:
-        cond_ant |= (df_ant['Ano'] == a) & (df_ant['Mês'] == m)
-    df_ant = df_ant[cond_ant]
-
-    ranking = []
-    for vendedor in vendedores_base:
-        pasta_v = vendedor_pasta.get(vendedor, "")
-        clientes_ativos_hist = df_historico_janela[df_historico_janela['nome_vendedor'] == vendedor]['codigo_cliente'].nunique()
-        df_atual_v = df_filtrado[df_filtrado['nome_vendedor'] == vendedor]
-        pos_atual = df_atual_v[df_atual_v['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
-        pct_atual_ativa = (pos_atual / clientes_ativos_hist * 100) if clientes_ativos_hist > 0 else 0
-        df_ant_v = df_ant[df_ant['nome_vendedor'] == vendedor]
-        pos_ant = df_ant_v[df_ant_v['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
-        pct_ant_ativa = (pos_ant / clientes_ativos_hist * 100) if clientes_ativos_hist > 0 else 0
-        crescimento_ativa = round(pct_atual_ativa - pct_ant_ativa, 1)
-        clientes_carteira_v = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor]['codigo_cliente'].nunique()
-        pct_atual_total = (pos_atual / clientes_carteira_v * 100) if clientes_carteira_v > 0 else 0
-        pct_ant_total = (pos_ant / clientes_carteira_v * 100) if clientes_carteira_v > 0 else 0
-        crescimento_total = round(pct_atual_total - pct_ant_total, 1)
-        ranking.append({
-            'Vendedor': vendedor, 'Pasta': pasta_v,
-            '% Atual (Ativa)': round(pct_atual_ativa,1), '% Anterior (Ativa)': round(pct_ant_ativa,1),
-            'Cresc. Ativa (pp)': crescimento_ativa,
-            '% Atual (Total)': round(pct_atual_total,1), '% Anterior (Total)': round(pct_ant_total,1),
-            'Cresc. Total (pp)': crescimento_total
-        })
-    df_ranking = pd.DataFrame(ranking).sort_values('Cresc. Ativa (pp)', ascending=False)
-
-    st.markdown("**Crescimento sobre Base Ativa (janela)**")
-    st.dataframe(df_ranking[['Vendedor', 'Pasta', '% Atual (Ativa)', '% Anterior (Ativa)', 'Cresc. Ativa (pp)']], use_container_width=True, hide_index=True)
-    st.markdown("**Crescimento sobre Carteira Total**")
-    st.dataframe(df_ranking[['Vendedor', 'Pasta', '% Atual (Total)', '% Anterior (Total)', 'Cresc. Total (pp)']], use_container_width=True, hide_index=True)
-else:
-    st.info("Selecione um mês ou ano específico para visualizar o ranking de crescimento.")
-st.divider()
-
-# ============================================================
 # NOVOS CARDS: MUNICÍPIO, CANAL, SEGMENTO (% SOBRE ATIVA + DOWNLOAD)
 # ============================================================
 def grafico_categoria_pct(df_filtrado_mes, df_janela, coluna, titulo):
@@ -761,12 +679,29 @@ else:
 st.divider()
 
 # ============================================================
-# RELATÓRIO BATALHA NAVAL
+# RELATÓRIO BATALHA NAVAL (COM SELETOR DE MESES)
 # ============================================================
 st.subheader("📋 Relatório Batalha Naval")
 
-matriz = df_filtrado.pivot_table(index='codigo_cliente', columns='Nome_Fabricante', aggfunc='size', fill_value=0)
-mapa_nomes = df_filtrado[['codigo_cliente', 'nome_cliente']].drop_duplicates('codigo_cliente')
+# Multiselect para meses específicos do relatório
+meses_batalha = sorted(df_filtrado['Mês_Ano'].dropna().unique())
+if 'meses_batalha_sel' not in st.session_state:
+    st.session_state['meses_batalha_sel'] = meses_batalha.copy()
+meses_sel_batalha = st.multiselect(
+    "Selecione os meses para o relatório:",
+    options=meses_batalha,
+    default=st.session_state['meses_batalha_sel'],
+    key='meses_batalha'
+)
+st.session_state['meses_batalha_sel'] = meses_sel_batalha
+
+if not meses_sel_batalha:
+    df_relatorio = df_filtrado.copy()
+else:
+    df_relatorio = df_filtrado[df_filtrado['Mês_Ano'].isin(meses_sel_batalha)]
+
+matriz = df_relatorio.pivot_table(index='codigo_cliente', columns='Nome_Fabricante', aggfunc='size', fill_value=0)
+mapa_nomes = df_relatorio[['codigo_cliente', 'nome_cliente']].drop_duplicates('codigo_cliente')
 mapa_nomes_dict = dict(zip(mapa_nomes['codigo_cliente'], mapa_nomes['nome_cliente']))
 
 matriz_bin = (matriz > 0).astype(int)
@@ -825,12 +760,10 @@ with st.expander("👁️ Visualizar tabela"):
 st.divider()
 
 # ============================================================
-# EXPORTAÇÃO DO RELATÓRIO GERENCIAL
+# EXPORTAÇÃO DO RELATÓRIO GERENCIAL (SEM RANKING)
 # ============================================================
 st.subheader("📑 Relatório Gerencial")
 if st.button("Gerar Relatório Gerencial (HTML)"):
-    if 'df_ranking' not in locals(): df_ranking = pd.DataFrame()
-
     html_geral = f"""
     <html><head><meta charset="UTF-8">
     <style>
@@ -856,8 +789,6 @@ if st.button("Gerar Relatório Gerencial (HTML)"):
     <div class="metric-box"><strong>{cobertura_media:.1f}</strong> Cobertura Média</div>
     <h2>Performance por Vendedor</h2>
     {perf_vendedor[['Vendedor', 'Pasta', '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media']].to_html(index=False)}
-    <h2>Ranking de Crescimento (Base Ativa)</h2>
-    {df_ranking[['Vendedor', 'Pasta', 'Cresc. Ativa (pp)']].to_html(index=False) if not df_ranking.empty else '<p>Não disponível.</p>'}
     <div class="footer">4 Elos Distribuidora Ltda. - Centro de Custo 622</div>
     </body></html>
     """
@@ -869,12 +800,29 @@ if st.button("Gerar Relatório Gerencial (HTML)"):
 st.divider()
 
 # ============================================================
-# FICHA DO CLIENTE
+# FICHA DO CLIENTE (COM SELETOR DE MESES)
 # ============================================================
 st.subheader("🔍 Ficha do Cliente")
 
+# Multiselect para meses na ficha
+meses_ficha = sorted(df_filtrado['Mês_Ano'].dropna().unique())
+if 'meses_ficha_sel' not in st.session_state:
+    st.session_state['meses_ficha_sel'] = meses_ficha.copy()
+meses_sel_ficha = st.multiselect(
+    "Selecione os meses para a ficha:",
+    options=meses_ficha,
+    default=st.session_state['meses_ficha_sel'],
+    key='meses_ficha'
+)
+st.session_state['meses_ficha_sel'] = meses_sel_ficha
+
+if not meses_sel_ficha:
+    df_ficha = df_filtrado.copy()
+else:
+    df_ficha = df_filtrado[df_filtrado['Mês_Ano'].isin(meses_sel_ficha)]
+
 try:
-    df_clientes_unicos = df_filtrado[['codigo_cliente', 'nome_cliente']].drop_duplicates().dropna()
+    df_clientes_unicos = df_ficha[['codigo_cliente', 'nome_cliente']].drop_duplicates().dropna()
     df_clientes_unicos['cliente_label'] = df_clientes_unicos['codigo_cliente'].astype(str) + ' - ' + df_clientes_unicos['nome_cliente'].astype(str)
     lista_clientes = sorted(df_clientes_unicos['cliente_label'].unique())
 except:
@@ -884,7 +832,7 @@ if lista_clientes:
     cliente_sel = st.selectbox("Selecione um cliente:", lista_clientes, key='ficha_cliente')
     if cliente_sel:
         codigo = cliente_sel.split(' - ')[0].strip()
-        df_cliente = df_filtrado[df_filtrado['codigo_cliente'].astype(str).str.strip() == codigo]
+        df_cliente = df_ficha[df_ficha['codigo_cliente'].astype(str).str.strip() == codigo]
         if not df_cliente.empty:
             st.write(f"**Código:** {codigo}")
             st.write(f"**Nome:** {df_cliente['nome_cliente'].iloc[0]}")
