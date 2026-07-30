@@ -182,31 +182,19 @@ coligacao_selecionada = st.sidebar.selectbox("Coligação", lista_coligacoes, in
 st.session_state['coligacao'] = coligacao_selecionada
 
 # -------------------- NOVOS FILTROS: MUNICÍPIO, CANAL, SEGMENTO (MULTISELECT) --------------------
-# Município
 if 'municipio_filtro' not in st.session_state: st.session_state['municipio_filtro'] = []
 municipio_opcoes = sorted(df_base['Municipio'].dropna().unique())
-municipio_selecionado = st.sidebar.multiselect(
-    "Município(s)", options=municipio_opcoes, default=st.session_state['municipio_filtro'],
-    placeholder="Selecione..."
-)
+municipio_selecionado = st.sidebar.multiselect("Município(s)", options=municipio_opcoes, default=st.session_state['municipio_filtro'], placeholder="Selecione...")
 st.session_state['municipio_filtro'] = municipio_selecionado
 
-# Canal
 if 'canal_filtro' not in st.session_state: st.session_state['canal_filtro'] = []
 canal_opcoes = sorted(df_base['Canal'].dropna().unique())
-canal_selecionado = st.sidebar.multiselect(
-    "Canal(is)", options=canal_opcoes, default=st.session_state['canal_filtro'],
-    placeholder="Selecione..."
-)
+canal_selecionado = st.sidebar.multiselect("Canal(is)", options=canal_opcoes, default=st.session_state['canal_filtro'], placeholder="Selecione...")
 st.session_state['canal_filtro'] = canal_selecionado
 
-# Segmento
 if 'segmento_filtro' not in st.session_state: st.session_state['segmento_filtro'] = []
 segmento_opcoes = sorted(df_base['Segmento'].dropna().unique())
-segmento_selecionado = st.sidebar.multiselect(
-    "Segmento(s)", options=segmento_opcoes, default=st.session_state['segmento_filtro'],
-    placeholder="Selecione..."
-)
+segmento_selecionado = st.sidebar.multiselect("Segmento(s)", options=segmento_opcoes, default=st.session_state['segmento_filtro'], placeholder="Selecione...")
 st.session_state['segmento_filtro'] = segmento_selecionado
 
 # -------------------- ANO --------------------
@@ -252,10 +240,7 @@ else:
 if 'industria_filtro' not in st.session_state:
     st.session_state['industria_filtro'] = []
 
-industria_selecionada_lista = st.sidebar.multiselect(
-    "Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, default=st.session_state['industria_filtro'],
-    placeholder="Digite para buscar...", key='industria_multiselect'
-)
+industria_selecionada_lista = st.sidebar.multiselect("Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, default=st.session_state['industria_filtro'], placeholder="Digite para buscar...", key='industria_multiselect')
 st.session_state['industria_filtro'] = industria_selecionada_lista
 
 # -------------------- METAS AJUSTÁVEIS --------------------
@@ -270,56 +255,44 @@ meta_total = st.sidebar.number_input("Meta Carteira Total (%)", min_value=0, max
 st.session_state['meta_total'] = meta_total
 
 # ============================================================
-# APLICAR FILTROS
+# APLICAR FILTROS (COMUM A TODOS OS CARDS, EXCETO MÊS GLOBAL)
 # ============================================================
-df_filtrado = df_merged.copy()
+def aplicar_filtros_comuns(df, incluir_mes=True):
+    """Aplica todos os filtros ao DataFrame, opcionalmente incluindo o mês global."""
+    df = df.copy()
+    if pasta_selecionada != "Todas":
+        INDUSTRIAS_PERMITIDAS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
+    else:
+        INDUSTRIAS_PERMITIDAS = TODAS_INDUSTRIAS.copy()
+    df = df[df['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
 
-if pasta_selecionada != "Todas":
-    INDUSTRIAS_PERMITIDAS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
-else:
-    INDUSTRIAS_PERMITIDAS = TODAS_INDUSTRIAS.copy()
+    if coordenador_selecionado != "Todos":
+        df = df[df['Nome_Coordenador'] == coordenador_selecionado]
+    if vendedor_selecionado != "Todos":
+        df = df[df['nome_vendedor'] == vendedor_selecionado]
+    if coligacao_selecionada != "Todas":
+        df = df[df['Cliente_Coligacao'] == coligacao_selecionada]
+    if municipio_selecionado:
+        df = df[df['Municipio'].isin(municipio_selecionado)]
+    if canal_selecionado:
+        df = df[df['Canal'].isin(canal_selecionado)]
+    if segmento_selecionado:
+        df = df[df['Segmento'].isin(segmento_selecionado)]
+    if ano_selecionado != "Todos":
+        df = df[df['Ano'] == int(ano_selecionado)]
+    if incluir_mes and mes_selecionado != "Todos":
+        mes_num = int(mes_selecionado.split(' - ')[0])
+        df = df[df['Mês'] == mes_num]
+    if industria_selecionada_lista:
+        df = df[df['Nome_Fabricante'].isin(industria_selecionada_lista)]
+    return df
 
-df_filtrado = df_filtrado[df_filtrado['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
+# DataFrames principais (com filtro de mês global)
+df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
+df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)  # histórico não filtra mês, apenas os demais filtros
 
-if coordenador_selecionado != "Todos":
-    df_filtrado = df_filtrado[df_filtrado['Nome_Coordenador'] == coordenador_selecionado]
-if vendedor_selecionado != "Todos":
-    df_filtrado = df_filtrado[df_filtrado['nome_vendedor'] == vendedor_selecionado]
-if coligacao_selecionada != "Todas":
-    df_filtrado = df_filtrado[df_filtrado['Cliente_Coligacao'] == coligacao_selecionada]
-# Novos filtros de categoria
-if municipio_selecionado:
-    df_filtrado = df_filtrado[df_filtrado['Municipio'].isin(municipio_selecionado)]
-if canal_selecionado:
-    df_filtrado = df_filtrado[df_filtrado['Canal'].isin(canal_selecionado)]
-if segmento_selecionado:
-    df_filtrado = df_filtrado[df_filtrado['Segmento'].isin(segmento_selecionado)]
-
-if ano_selecionado != "Todos":
-    df_filtrado = df_filtrado[df_filtrado['Ano'] == int(ano_selecionado)]
-if mes_selecionado != "Todos":
-    mes_num = int(mes_selecionado.split(' - ')[0])
-    df_filtrado = df_filtrado[df_filtrado['Mês'] == mes_num]
-if industria_selecionada_lista:
-    df_filtrado = df_filtrado[df_filtrado['Nome_Fabricante'].isin(industria_selecionada_lista)]
-
-# ============================================================
-# HISTÓRICO (PRÉ-FILTRADO) - também aplicar novos filtros
-# ============================================================
-df_historico = df_merged.copy()
-if coordenador_selecionado != "Todos":
-    df_historico = df_historico[df_historico['Nome_Coordenador'] == coordenador_selecionado]
-if vendedor_selecionado != "Todos":
-    df_historico = df_historico[df_historico['nome_vendedor'] == vendedor_selecionado]
-df_historico = df_historico[df_historico['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
-if coligacao_selecionada != "Todas":
-    df_historico = df_historico[df_historico['Cliente_Coligacao'] == coligacao_selecionada]
-if municipio_selecionado:
-    df_historico = df_historico[df_historico['Municipio'].isin(municipio_selecionado)]
-if canal_selecionado:
-    df_historico = df_historico[df_historico['Canal'].isin(canal_selecionado)]
-if segmento_selecionado:
-    df_historico = df_historico[df_historico['Segmento'].isin(segmento_selecionado)]
+# DataFrame base para os relatórios internos (sem filtro de mês global)
+df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
 # ============================================================
 # APLICAR JANELA MÓVEL (BASE ATIVA)
@@ -375,27 +348,17 @@ if not mensal_pos.empty:
 else:
     st.info("Sem dados mensais para exibir.")
 
-# Clientes sem venda (carteira ativa) com downloads
 if clientes_sem_venda_ativos:
     df_sem_venda_ativos = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_ativos)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'Municipio', 'Canal', 'Segmento']]
     df_sem_venda_ativos.columns = ['Código', 'Nome', 'Coligação', 'Município', 'Canal', 'Segmento']
-
     with st.expander(f"🔴 {len(clientes_sem_venda_ativos)} clientes sem venda no mês (Carteira Ativa)"):
         st.dataframe(df_sem_venda_ativos, use_container_width=True, hide_index=True)
-
-    # Download Excel
     output_ativa = BytesIO()
     with pd.ExcelWriter(output_ativa, engine='openpyxl') as writer:
         df_sem_venda_ativos.to_excel(writer, index=False, sheet_name='Sem Venda Ativa')
-    st.download_button(
-        "📥 Baixar Excel (Sem Venda Ativa)",
-        data=output_ativa.getvalue(),
-        file_name=f'sem_venda_ativa_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        use_container_width=True
-    )
-
-    # Download PDF (HTML)
+    st.download_button("📥 Baixar Excel (Sem Venda Ativa)", data=output_ativa.getvalue(),
+                       file_name=f'sem_venda_ativa_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
     html_ativa = f"""
     <html><head><meta charset="UTF-8"><style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
@@ -409,13 +372,9 @@ if clientes_sem_venda_ativos:
         {df_sem_venda_ativos.to_html(index=False)}
     </body></html>
     """
-    st.download_button(
-        "📥 Baixar PDF (Sem Venda Ativa)",
-        data=html_ativa.encode('utf-8'),
-        file_name=f'sem_venda_ativa_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
-        mime='text/html',
-        use_container_width=True
-    )
+    st.download_button("📥 Baixar PDF (Sem Venda Ativa)", data=html_ativa.encode('utf-8'),
+                       file_name=f'sem_venda_ativa_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
+                       mime='text/html', use_container_width=True)
     st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 st.divider()
 
@@ -452,27 +411,17 @@ col4, col5 = st.columns(2)
 col4.metric("Cobertura Média", f"{cobertura_media:.1f} ind/cliente")
 col5.metric("Cobertura Total", f"{cobertura_total} coberturas")
 
-# Clientes sem venda (carteira total) com downloads
 if clientes_sem_venda_carteira:
     df_sem_venda_total = df_base[df_base['codigo_cliente'].isin(clientes_sem_venda_carteira)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'Municipio', 'Canal', 'Segmento']]
     df_sem_venda_total.columns = ['Código', 'Nome', 'Coligação', 'Município', 'Canal', 'Segmento']
-
     with st.expander(f"🔴 {len(clientes_sem_venda_carteira)} clientes sem venda (Carteira Total)"):
         st.dataframe(df_sem_venda_total, use_container_width=True, hide_index=True)
-
-    # Download Excel
     output_total = BytesIO()
     with pd.ExcelWriter(output_total, engine='openpyxl') as writer:
         df_sem_venda_total.to_excel(writer, index=False, sheet_name='Sem Venda Total')
-    st.download_button(
-        "📥 Baixar Excel (Sem Venda Total)",
-        data=output_total.getvalue(),
-        file_name=f'sem_venda_total_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        use_container_width=True
-    )
-
-    # Download PDF (HTML)
+    st.download_button("📥 Baixar Excel (Sem Venda Total)", data=output_total.getvalue(),
+                       file_name=f'sem_venda_total_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
     html_total = f"""
     <html><head><meta charset="UTF-8"><style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
@@ -486,13 +435,9 @@ if clientes_sem_venda_carteira:
         {df_sem_venda_total.to_html(index=False)}
     </body></html>
     """
-    st.download_button(
-        "📥 Baixar PDF (Sem Venda Total)",
-        data=html_total.encode('utf-8'),
-        file_name=f'sem_venda_total_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
-        mime='text/html',
-        use_container_width=True
-    )
+    st.download_button("📥 Baixar PDF (Sem Venda Total)", data=html_total.encode('utf-8'),
+                       file_name=f'sem_venda_total_{vendedor_selecionado if vendedor_selecionado != "Todos" else "geral"}_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
+                       mime='text/html', use_container_width=True)
     st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 st.divider()
 
@@ -527,20 +472,15 @@ for vendedor in vendedores_base:
     pct_ativa_vend = (clientes_pos / clientes_ativos_hist * 100) if clientes_ativos_hist > 0 else 0
     pct_total_vend = (clientes_pos / clientes_carteira * 100) if clientes_carteira > 0 else 0
     perf_list.append({
-        'Vendedor': vendedor,
-        'Pasta': pasta_v,
-        'Total_Clientes': clientes_carteira,
-        'Clientes_Ativos_Hist': clientes_ativos_hist,
+        'Vendedor': vendedor, 'Pasta': pasta_v,
+        'Total_Clientes': clientes_carteira, 'Clientes_Ativos_Hist': clientes_ativos_hist,
         'Clientes_Positivados': clientes_pos,
-        '%_Positivação_Ativa': round(pct_ativa_vend, 1),
-        '%_Positivação_Total': round(pct_total_vend, 1),
-        'Cobertura_Media': round(cobertura_media_vend, 1),
-        'Cobertura_Total': cobertura_total_vend
+        '%_Positivação_Ativa': round(pct_ativa_vend, 1), '%_Positivação_Total': round(pct_total_vend, 1),
+        'Cobertura_Media': round(cobertura_media_vend, 1), 'Cobertura_Total': cobertura_total_vend
     })
 
 perf_vendedor = pd.DataFrame(perf_list).sort_values('%_Positivação_Ativa', ascending=False)
 
-# Gráfico 1: Base Ativa (em cima)
 fig_ativa = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Ativa',
                    title='% Positivação (Base Ativa)',
                    text=perf_vendedor['%_Positivação_Ativa'].apply(lambda x: f'{x:.1f}%'),
@@ -550,7 +490,6 @@ fig_ativa.update_traces(textposition='outside')
 fig_ativa.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
 st.plotly_chart(fig_ativa, use_container_width=True)
 
-# Gráfico 2: Carteira Total (embaixo)
 fig_total = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Total',
                    title='% Positivação (Carteira Total)',
                    text=perf_vendedor['%_Positivação_Total'].apply(lambda x: f'{x:.1f}%'),
@@ -560,7 +499,6 @@ fig_total.update_traces(textposition='outside')
 fig_total.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
 st.plotly_chart(fig_total, use_container_width=True)
 
-# Gráfico 3: Cobertura Média (em baixo)
 fig_cob = px.bar(perf_vendedor, x='Vendedor', y='Cobertura_Media',
                  title='Cobertura Média por Vendedor',
                  text=perf_vendedor['Cobertura_Media'].apply(lambda x: f'{x:.1f}'),
@@ -587,11 +525,9 @@ def grafico_categoria_pct(df_filtrado_mes, df_janela, coluna, titulo):
     ).reset_index(name='Coberturas')
     total_clientes = df_base.groupby(coluna)['codigo_cliente'].nunique().reset_index()
     total_clientes.columns = [coluna, 'Total_Clientes']
-
     df_merged_cat = posit.merge(ativos, on=coluna, how='left').merge(coberturas, on=coluna, how='left').merge(total_clientes, on=coluna, how='left')
     df_merged_cat['%_Positivacao'] = (df_merged_cat['Positivados'] / df_merged_cat['Ativos_Janela'] * 100).round(1)
     df_merged_cat = df_merged_cat.sort_values('%_Positivacao', ascending=True)
-
     fig = px.bar(df_merged_cat, y=coluna, x='%_Positivacao', text='%_Positivacao',
                  title=f'% Positivados no mês sobre Ativos (Janela) - {titulo}',
                  orientation='h', color='%_Positivacao', color_continuous_scale='Blues')
@@ -600,7 +536,6 @@ def grafico_categoria_pct(df_filtrado_mes, df_janela, coluna, titulo):
     return fig, df_merged_cat
 
 if mes_selecionado != "Todos":
-    # Município
     st.subheader("📍 Positivação por Município")
     fig_munic, df_munic = grafico_categoria_pct(df_filtrado, df_historico_janela, 'Municipio', 'Município')
     st.plotly_chart(fig_munic, use_container_width=True)
@@ -612,7 +547,6 @@ if mes_selecionado != "Todos":
                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     st.divider()
 
-    # Canal
     st.subheader("🏢 Positivação por Canal")
     fig_canal, df_canal = grafico_categoria_pct(df_filtrado, df_historico_janela, 'Canal', 'Canal')
     st.plotly_chart(fig_canal, use_container_width=True)
@@ -624,7 +558,6 @@ if mes_selecionado != "Todos":
                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     st.divider()
 
-    # Segmento
     st.subheader("🏷️ Positivação por Segmento")
     fig_seg, df_seg = grafico_categoria_pct(df_filtrado, df_historico_janela, 'Segmento', 'Segmento')
     st.plotly_chart(fig_seg, use_container_width=True)
@@ -664,14 +597,12 @@ if base_op and comp_op:
         df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
         df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
         st.dataframe(df_op, use_container_width=True, hide_index=True)
-        # Download Excel
         output_op = BytesIO()
         with pd.ExcelWriter(output_op, engine='openpyxl') as writer:
             df_op.to_excel(writer, index=False, sheet_name='Oportunidades')
         st.download_button("📥 Baixar Excel (Oportunidades)", data=output_op.getvalue(),
                            file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                           use_container_width=True)
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
     else:
         st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
 else:
@@ -679,12 +610,11 @@ else:
 st.divider()
 
 # ============================================================
-# RELATÓRIO BATALHA NAVAL (COM SELETOR DE MESES)
+# RELATÓRIO BATALHA NAVAL (COM SELETOR DE MESES INDEPENDENTE)
 # ============================================================
 st.subheader("📋 Relatório Batalha Naval")
 
-# Multiselect para meses específicos do relatório
-meses_batalha = sorted(df_filtrado['Mês_Ano'].dropna().unique())
+meses_batalha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
 if 'meses_batalha_sel' not in st.session_state:
     st.session_state['meses_batalha_sel'] = meses_batalha.copy()
 meses_sel_batalha = st.multiselect(
@@ -695,20 +625,17 @@ meses_sel_batalha = st.multiselect(
 )
 st.session_state['meses_batalha_sel'] = meses_sel_batalha
 
-if not meses_sel_batalha:
-    df_relatorio = df_filtrado.copy()
-else:
-    df_relatorio = df_filtrado[df_filtrado['Mês_Ano'].isin(meses_sel_batalha)]
+df_relatorio = df_relatorio_base.copy()
+if meses_sel_batalha:
+    df_relatorio = df_relatorio[df_relatorio['Mês_Ano'].isin(meses_sel_batalha)]
 
 matriz = df_relatorio.pivot_table(index='codigo_cliente', columns='Nome_Fabricante', aggfunc='size', fill_value=0)
 mapa_nomes = df_relatorio[['codigo_cliente', 'nome_cliente']].drop_duplicates('codigo_cliente')
 mapa_nomes_dict = dict(zip(mapa_nomes['codigo_cliente'], mapa_nomes['nome_cliente']))
-
 matriz_bin = (matriz > 0).astype(int)
 matriz_bin['Nome_Cliente'] = matriz.index.map(lambda x: mapa_nomes_dict.get(x, 'N/A'))
 matriz_bin['Total_Indústrias'] = matriz_bin.drop(columns=['Nome_Cliente']).sum(axis=1)
 matriz_bin = matriz_bin.reset_index().rename(columns={'codigo_cliente': 'Código'})
-
 colunas_fabricantes = [c for c in matriz_bin.columns if c not in ['Código', 'Nome_Cliente', 'Total_Indústrias']]
 matriz_bin = matriz_bin[['Código', 'Nome_Cliente'] + colunas_fabricantes + ['Total_Indústrias']]
 
@@ -722,7 +649,8 @@ with col2:
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         matriz_bin.to_excel(writer, index=False, sheet_name='Batalha Naval')
-    st.download_button("📥 Baixar Excel", data=output.getvalue(), file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+    st.download_button("📥 Baixar Excel", data=output.getvalue(), file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
 with col3:
     html_pdf = f"""
     <html><head><meta charset="UTF-8"><style>
@@ -752,7 +680,8 @@ with col3:
             html_pdf += f"<td class='{classe}'>{valor}</td>"
         html_pdf += f"<td><strong>{row['Total_Indústrias']}</strong></td></tr>"
     html_pdf += f"</tbody></table><div class='footer'>4 Elos Distribuidora Ltda. - Centro de Custo 622 | Total: {len(matriz_bin)} clientes | Cobertura Total: {matriz_bin['Total_Indústrias'].sum()} coberturas</div></body></html>"
-    st.download_button("📥 Baixar PDF (HTML)", data=html_pdf.encode('utf-8'), file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.html', mime='text/html', use_container_width=True)
+    st.download_button("📥 Baixar PDF (HTML)", data=html_pdf.encode('utf-8'), file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.html',
+                       mime='text/html', use_container_width=True)
     st.caption("💡 Abra o arquivo HTML e salve como PDF (Ctrl+P)")
 
 with st.expander("👁️ Visualizar tabela"):
@@ -800,12 +729,11 @@ if st.button("Gerar Relatório Gerencial (HTML)"):
 st.divider()
 
 # ============================================================
-# FICHA DO CLIENTE (COM SELETOR DE MESES)
+# FICHA DO CLIENTE (COM SELETOR DE MESES INDEPENDENTE)
 # ============================================================
 st.subheader("🔍 Ficha do Cliente")
 
-# Multiselect para meses na ficha
-meses_ficha = sorted(df_filtrado['Mês_Ano'].dropna().unique())
+meses_ficha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
 if 'meses_ficha_sel' not in st.session_state:
     st.session_state['meses_ficha_sel'] = meses_ficha.copy()
 meses_sel_ficha = st.multiselect(
@@ -816,10 +744,9 @@ meses_sel_ficha = st.multiselect(
 )
 st.session_state['meses_ficha_sel'] = meses_sel_ficha
 
-if not meses_sel_ficha:
-    df_ficha = df_filtrado.copy()
-else:
-    df_ficha = df_filtrado[df_filtrado['Mês_Ano'].isin(meses_sel_ficha)]
+df_ficha = df_relatorio_base.copy()
+if meses_sel_ficha:
+    df_ficha = df_ficha[df_ficha['Mês_Ano'].isin(meses_sel_ficha)]
 
 try:
     df_clientes_unicos = df_ficha[['codigo_cliente', 'nome_cliente']].drop_duplicates().dropna()
