@@ -42,8 +42,8 @@ def load_data():
     url_base = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet="
 
     # ABAS DE TESTE
-    df_base = pd.read_csv(url_base + "Base Teste")
-    df_bi   = pd.read_csv(url_base + "BI Teste")
+    df_base = pd.read_csv(url_base + "BASE_Teste")
+    df_bi   = pd.read_csv(url_base + "BI_Teste")
     df_fabricantes = pd.read_csv(url_base + "FABRICANTE")
     df_vendedores  = pd.read_csv(url_base + "VENDEDORES")
 
