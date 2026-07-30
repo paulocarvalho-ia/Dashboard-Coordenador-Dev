@@ -428,7 +428,7 @@ if clientes_sem_venda_carteira:
 st.divider()
 
 # ============================================================
-# PERFORMANCE POR VENDEDOR (COM JANELA MÓVEL E METAS)
+# PERFORMANCE POR VENDEDOR (COM GRÁFICOS EMPILHADOS)
 # ============================================================
 st.subheader("👥 Performance por Vendedor")
 
@@ -437,7 +437,6 @@ if coordenador_selecionado != "Todos":
     df_base_perf = df_base_perf[df_base_perf['Nome_Coordenador'] == coordenador_selecionado]
 if vendedor_selecionado != "Todos":
     df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor_selecionado]
-# Aplicar filtros de categoria também na performance (já que afeta a carteira)
 if municipio_selecionado:
     df_base_perf = df_base_perf[df_base_perf['Municipio'].isin(municipio_selecionado)]
 if canal_selecionado:
@@ -472,27 +471,27 @@ for vendedor in vendedores_base:
 
 perf_vendedor = pd.DataFrame(perf_list).sort_values('%_Positivação_Ativa', ascending=False)
 
-col1, col2 = st.columns(2)
-with col1:
-    fig_ativa = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Ativa',
-                       title='% Positivação (Base Ativa)',
-                       text=perf_vendedor['%_Positivação_Ativa'].apply(lambda x: f'{x:.1f}%'),
-                       color='%_Positivação_Ativa', color_continuous_scale='Greens')
-    fig_ativa.add_hline(y=meta_ativa, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_ativa}%")
-    fig_ativa.update_traces(textposition='outside')
-    fig_ativa.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
-    st.plotly_chart(fig_ativa, use_container_width=True)
+# Gráfico 1: Base Ativa (em cima)
+fig_ativa = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Ativa',
+                   title='% Positivação (Base Ativa)',
+                   text=perf_vendedor['%_Positivação_Ativa'].apply(lambda x: f'{x:.1f}%'),
+                   color='%_Positivação_Ativa', color_continuous_scale='Greens')
+fig_ativa.add_hline(y=meta_ativa, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_ativa}%")
+fig_ativa.update_traces(textposition='outside')
+fig_ativa.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
+st.plotly_chart(fig_ativa, use_container_width=True)
 
-with col2:
-    fig_total = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Total',
-                       title='% Positivação (Carteira Total)',
-                       text=perf_vendedor['%_Positivação_Total'].apply(lambda x: f'{x:.1f}%'),
-                       color='%_Positivação_Total', color_continuous_scale='Blues')
-    fig_total.add_hline(y=meta_total, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_total}%")
-    fig_total.update_traces(textposition='outside')
-    fig_total.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
-    st.plotly_chart(fig_total, use_container_width=True)
+# Gráfico 2: Carteira Total (embaixo)
+fig_total = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Total',
+                   title='% Positivação (Carteira Total)',
+                   text=perf_vendedor['%_Positivação_Total'].apply(lambda x: f'{x:.1f}%'),
+                   color='%_Positivação_Total', color_continuous_scale='Blues')
+fig_total.add_hline(y=meta_total, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_total}%")
+fig_total.update_traces(textposition='outside')
+fig_total.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
+st.plotly_chart(fig_total, use_container_width=True)
 
+# Gráfico 3: Cobertura Média (em baixo)
 fig_cob = px.bar(perf_vendedor, x='Vendedor', y='Cobertura_Media',
                  title='Cobertura Média por Vendedor',
                  text=perf_vendedor['Cobertura_Media'].apply(lambda x: f'{x:.1f}'),
