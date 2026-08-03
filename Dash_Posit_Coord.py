@@ -145,6 +145,12 @@ if 'pasta' not in st.session_state: st.session_state['pasta'] = 'Todas'
 pasta_selecionada = st.sidebar.selectbox("Pasta", lista_pastas, index=lista_pastas.index(st.session_state['pasta']) if st.session_state['pasta'] in lista_pastas else 0, key='pasta_select')
 st.session_state['pasta'] = pasta_selecionada
 
+# Definição das indústrias permitidas (corrigido para PVA)
+if pasta_selecionada in ["Todas", "PVA"]:
+    INDUSTRIAS_PERMITIDAS = TODAS_INDUSTRIAS.copy()
+else:
+    INDUSTRIAS_PERMITIDAS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
+
 # -------------------- COORDENADOR --------------------
 lista_coordenadores = ["Todos"] + sorted(df_base['Nome_Coordenador'].dropna().unique().tolist())
 if 'coordenador' not in st.session_state: st.session_state['coordenador'] = 'Todos'
@@ -246,10 +252,10 @@ st.session_state['janela_meses'] = janela_meses
 # -------------------- INDÚSTRIA (MULTISELECT) --------------------
 st.sidebar.divider()
 st.sidebar.header("🏭 Filtro por Indústria")
-if pasta_selecionada != "Todas":
-    INDUSTRIAS_DISPONIVEIS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
-else:
+if pasta_selecionada in ["Todas", "PVA"]:
     INDUSTRIAS_DISPONIVEIS = TODAS_INDUSTRIAS.copy()
+else:
+    INDUSTRIAS_DISPONIVEIS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
 
 if 'industria_filtro' not in st.session_state:
     st.session_state['industria_filtro'] = []
@@ -274,10 +280,7 @@ st.session_state['meta_total'] = meta_total
 def aplicar_filtros_comuns(df, incluir_mes=True):
     """Aplica todos os filtros ao DataFrame, opcionalmente incluindo o mês global."""
     df = df.copy()
-    if pasta_selecionada != "Todas":
-        INDUSTRIAS_PERMITIDAS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
-    else:
-        INDUSTRIAS_PERMITIDAS = TODAS_INDUSTRIAS.copy()
+    # O filtro de indústria agora usa INDUSTRIAS_PERMITIDAS (já definido acima)
     df = df[df['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
 
     if coordenador_selecionado != "Todos":
@@ -786,7 +789,7 @@ if lista_clientes:
             meses_disp = sorted(df_cliente['Mês_Ano'].dropna().unique())
             if meses_disp:
                 tabela = []
-                for ind in (INDUSTRIAS_PERMITIDAS if pasta_selecionada != "Todas" else TODAS_INDUSTRIAS):
+                for ind in (INDUSTRIAS_PERMITIDAS if pasta_selecionada != "Todas" else TODAS_INDUSTRIAS):  # já considera PVA
                     linha = {'Indústria': ind}
                     for m in meses_disp:
                         linha[m] = '✅' if ((df_cliente['Nome_Fabricante'] == ind) & (df_cliente['Mês_Ano'] == m)).any() else '❌'
@@ -811,3 +814,4 @@ st.divider()
 col1, col2 = st.columns(2)
 col1.caption(f"📅 Dashboard compilado em: {COMPILATION_DATE}")
 col2.caption(f"📊 Dados carregados em: {data_dados}")
+```Agora, ao selecionar **PVA**, o dashboard exibirá **todas as indústrias** (sem restrição), funcionando corretamente. As opções PA e PV continuam filtrando apenas suas respectivas indústrias.
