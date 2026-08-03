@@ -286,11 +286,7 @@ def aplicar_filtros_comuns(df, incluir_mes=True):
         vendedores_pasta = [v for v in df_base['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
         df = df[df['nome_vendedor'].isin(vendedores_pasta)]
     elif vendedor_selecionado != "Todos":
-        # Se pasta for "Todas", respeita a seleção individual
         df = df[df['nome_vendedor'] == vendedor_selecionado]
-    else:
-        # Ambos "Todos" – não aplica filtro de vendedor
-        pass
 
     if coordenador_selecionado != "Todos":
         df = df[df['Nome_Coordenador'] == coordenador_selecionado]
@@ -481,6 +477,10 @@ if coordenador_selecionado != "Todos":
     df_base_perf = df_base_perf[df_base_perf['Nome_Coordenador'] == coordenador_selecionado]
 if vendedor_selecionado != "Todos":
     df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor_selecionado]
+# Aplicar filtro de pasta também na base de performance
+if pasta_selecionada != "Todas":
+    vendedores_da_pasta = [v for v in df_base_perf['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
+    df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'].isin(vendedores_da_pasta)]
 if municipio_selecionado:
     df_base_perf = df_base_perf[df_base_perf['Municipio'].isin(municipio_selecionado)]
 if canal_selecionado:
@@ -488,7 +488,13 @@ if canal_selecionado:
 if segmento_selecionado:
     df_base_perf = df_base_perf[df_base_perf['Segmento'].isin(segmento_selecionado)]
 
-vendedores_base = df_base_perf['nome_vendedor_base'].dropna().unique()
+# Lista de vendedores a exibir: apenas os que estão no df_filtrado (têm vendas no período)
+# Se um vendedor específico foi selecionado, mostramos apenas ele (mesmo sem vendas)
+if vendedor_selecionado != "Todos":
+    vendedores_base = [vendedor_selecionado]
+else:
+    vendedores_base = df_filtrado['nome_vendedor'].dropna().unique()
+
 perf_list = []
 for vendedor in vendedores_base:
     pasta_v = vendedor_pasta.get(vendedor, "")
