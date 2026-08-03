@@ -814,4 +814,3 @@ st.divider()
 col1, col2 = st.columns(2)
 col1.caption(f"📅 Dashboard compilado em: {COMPILATION_DATE}")
 col2.caption(f"📊 Dados carregados em: {data_dados}")
-```Agora, ao selecionar **PVA**, o dashboard exibirá **todas as indústrias** (sem restrição), funcionando corretamente. As opções PA e PV continuam filtrando apenas suas respectivas indústrias.
