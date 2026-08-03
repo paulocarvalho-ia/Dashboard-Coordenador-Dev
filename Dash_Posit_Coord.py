@@ -197,14 +197,21 @@ segmento_opcoes = sorted(df_base['Segmento'].dropna().unique())
 segmento_selecionado = st.sidebar.multiselect("Segmento(s)", options=segmento_opcoes, default=st.session_state['segmento_filtro'], placeholder="Selecione...")
 st.session_state['segmento_filtro'] = segmento_selecionado
 
-# -------------------- ANO --------------------
+# -------------------- ANO (PADRÃO ÚLTIMO ANO DISPONÍVEL) --------------------
 anos_disponiveis = sorted(df_merged['Ano'].dropna().unique())
 lista_anos = ["Todos"] + [str(int(a)) for a in anos_disponiveis]
-if 'ano' not in st.session_state: st.session_state['ano'] = 'Todos'
+
+# Inicializa o ano com o último ano disponível, se ainda não estiver definido
+if 'ano' not in st.session_state:
+    st.session_state['ano'] = str(int(anos_disponiveis[-1])) if anos_disponiveis else 'Todos'
+
+if st.session_state['ano'] not in lista_anos:
+    st.session_state['ano'] = 'Todos'
+
 ano_selecionado = st.sidebar.selectbox("Ano", lista_anos, index=lista_anos.index(st.session_state['ano']), key='ano_select')
 st.session_state['ano'] = ano_selecionado
 
-# -------------------- MÊS (PADRÃO MÊS CORRENTE) --------------------
+# -------------------- MÊS (PADRÃO ÚLTIMO MÊS DISPONÍVEL) --------------------
 if ano_selecionado != "Todos":
     meses_disponiveis = sorted(df_merged[df_merged['Ano'] == int(ano_selecionado)]['Mês'].dropna().unique())
 else:
@@ -213,10 +220,17 @@ else:
 meses_nomes = {1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'}
 lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes[int(m)]}" for m in meses_disponiveis]
 
-mes_corrente = datetime.now().month
+# Inicializa o mês com o último mês disponível, se ainda não estiver definido
 if 'mes' not in st.session_state:
-    mes_str = f"{mes_corrente:02d} - {meses_nomes.get(mes_corrente, '')}"
-    st.session_state['mes'] = mes_str if mes_str in lista_meses else 'Todos'
+    if meses_disponiveis:
+        ultimo_mes = meses_disponiveis[-1]
+        st.session_state['mes'] = f"{ultimo_mes:02d} - {meses_nomes.get(ultimo_mes, '')}"
+    else:
+        st.session_state['mes'] = 'Todos'
+
+# Garante que o valor ainda existe na lista (pode ter mudado de ano)
+if st.session_state['mes'] not in lista_meses:
+    st.session_state['mes'] = 'Todos'
 
 mes_selecionado = st.sidebar.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_select')
 st.session_state['mes'] = mes_selecionado
