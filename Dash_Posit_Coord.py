@@ -295,19 +295,27 @@ df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)  # históric
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
 # ============================================================
-# APLICAR JANELA MÓVEL (BASE ATIVA) - APENAS MESES ANTERIORES
+# APLICAR JANELA MÓVEL (BASE ATIVA) - CORRIGIDA
 # ============================================================
-if mes_selecionado != "Todos" and ano_selecionado != "Todos":
+if mes_selecionado != "Todos":
+    # Determina o ano de referência
+    if ano_selecionado != "Todos":
+        ano_ref = int(ano_selecionado)
+    else:
+        # Se ano não foi selecionado, usa o ano máximo disponível no histórico
+        ano_ref = df_historico['Ano'].max()
+    
     mes_atual = int(mes_selecionado.split(' - ')[0])
-    ano_atual = int(ano_selecionado)
+    
     meses_janela = []
     for i in range(1, janela_meses + 1):   # começa em 1 (mês anterior)
         mes = mes_atual - i
-        ano = ano_atual
+        ano = ano_ref
         while mes <= 0:
             mes += 12
             ano -= 1
         meses_janela.append((ano, mes))
+    
     cond_janela = pd.Series(False, index=df_historico.index)
     for a, m in meses_janela:
         cond_janela |= (df_historico['Ano'] == a) & (df_historico['Mês'] == m)
