@@ -207,7 +207,6 @@ st.session_state['segmento_filtro'] = segmento_selecionado
 anos_disponiveis = sorted(df_merged['Ano'].dropna().unique())
 lista_anos = ["Todos"] + [str(int(a)) for a in anos_disponiveis]
 
-# Inicializa o ano com o último ano disponível, se ainda não estiver definido
 if 'ano' not in st.session_state:
     st.session_state['ano'] = str(int(anos_disponiveis[-1])) if anos_disponiveis else 'Todos'
 
@@ -226,7 +225,6 @@ else:
 meses_nomes = {1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'}
 lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes[int(m)]}" for m in meses_disponiveis]
 
-# Inicializa o mês com o último mês disponível, se ainda não estiver definido
 if 'mes' not in st.session_state:
     if meses_disponiveis:
         ultimo_mes = meses_disponiveis[-1]
@@ -234,7 +232,6 @@ if 'mes' not in st.session_state:
     else:
         st.session_state['mes'] = 'Todos'
 
-# Garante que o valor ainda existe na lista (pode ter mudado de ano)
 if st.session_state['mes'] not in lista_meses:
     st.session_state['mes'] = 'Todos'
 
@@ -280,13 +277,23 @@ st.session_state['meta_total'] = meta_total
 def aplicar_filtros_comuns(df, incluir_mes=True):
     """Aplica todos os filtros ao DataFrame, opcionalmente incluindo o mês global."""
     df = df.copy()
-    # O filtro de indústria agora usa INDUSTRIAS_PERMITIDAS (já definido acima)
+    # Filtro de indústrias (respeita pasta)
     df = df[df['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
+
+    # Filtro de vendedor: se uma pasta específica foi selecionada, automaticamente
+    # restringe aos vendedores daquela pasta, mesmo que "vendedor" esteja "Todos"
+    if pasta_selecionada != "Todas":
+        vendedores_pasta = [v for v in df_base['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
+        df = df[df['nome_vendedor'].isin(vendedores_pasta)]
+    elif vendedor_selecionado != "Todos":
+        # Se pasta for "Todas", respeita a seleção individual
+        df = df[df['nome_vendedor'] == vendedor_selecionado]
+    else:
+        # Ambos "Todos" – não aplica filtro de vendedor
+        pass
 
     if coordenador_selecionado != "Todos":
         df = df[df['Nome_Coordenador'] == coordenador_selecionado]
-    if vendedor_selecionado != "Todos":
-        df = df[df['nome_vendedor'] == vendedor_selecionado]
     if coligacao_selecionada != "Todas":
         df = df[df['Cliente_Coligacao'] == coligacao_selecionada]
     if municipio_selecionado:
@@ -306,7 +313,7 @@ def aplicar_filtros_comuns(df, incluir_mes=True):
 
 # DataFrames principais (com filtro de mês global)
 df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
-df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)  # histórico não filtra mês
+df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
 # DataFrame base para os relatórios internos (sem filtro de mês global)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
@@ -315,17 +322,15 @@ df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 # APLICAR JANELA MÓVEL (BASE ATIVA) - CORRIGIDA
 # ============================================================
 if mes_selecionado != "Todos":
-    # Determina o ano de referência
     if ano_selecionado != "Todos":
         ano_ref = int(ano_selecionado)
     else:
-        # Se ano não foi selecionado, usa o ano máximo disponível no histórico
         ano_ref = df_historico['Ano'].max()
     
     mes_atual = int(mes_selecionado.split(' - ')[0])
     
     meses_janela = []
-    for i in range(1, janela_meses + 1):   # começa em 1 (mês anterior)
+    for i in range(1, janela_meses + 1):
         mes = mes_atual - i
         ano = ano_ref
         while mes <= 0:
@@ -601,7 +606,6 @@ else:
 # ============================================================
 st.subheader("🔀 Oportunidades Cruzadas")
 
-# Seletores de período independentes
 col_per1, col_per2 = st.columns(2)
 meses_oportunidades = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
 if not meses_oportunidades:
@@ -613,7 +617,6 @@ with col_per1:
 with col_per2:
     mes_fim = st.selectbox("Mês fim:", options=meses_oportunidades, index=len(meses_oportunidades)-1, key='mes_fim_op')
 
-# Filtrar dados pelo período selecionado
 if mes_inicio <= mes_fim:
     df_oportunidades = df_relatorio_base[(df_relatorio_base['Mês_Ano'] >= mes_inicio) & (df_relatorio_base['Mês_Ano'] <= mes_fim)]
 else:
@@ -629,18 +632,15 @@ with col_op2:
     comp_op = st.multiselect("Selecione uma ou mais indústrias que o cliente NÃO comprou:", options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
 
 if base_op and comp_op:
-    # Verifica se cada indústria da base possui vendas no período selecionado
     base_sem_vendas = [ind for ind in base_op if df_oportunidades[df_oportunidades['Nome_Fabricante'] == ind].empty]
     if base_sem_vendas:
         st.warning(f"As seguintes indústrias da base não tiveram vendas no período selecionado: {', '.join(base_sem_vendas)}.")
         st.info("Nenhum cliente pode atender aos critérios com essas indústrias.")
     else:
-        # Clientes que compraram TODAS as indústrias da base
         clientes_base = set(df_oportunidades[df_oportunidades['Nome_Fabricante'] == base_op[0]]['codigo_cliente'].unique())
         for ind in base_op[1:]:
             clientes_base &= set(df_oportunidades[df_oportunidades['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
         
-        # Clientes que NÃO compraram NENHUMA das indústrias de comparação
         clientes_comp = set(df_oportunidades['codigo_cliente'].unique())
         for ind in comp_op:
             clientes_comp -= set(df_oportunidades[df_oportunidades['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
@@ -789,7 +789,7 @@ if lista_clientes:
             meses_disp = sorted(df_cliente['Mês_Ano'].dropna().unique())
             if meses_disp:
                 tabela = []
-                for ind in (INDUSTRIAS_PERMITIDAS if pasta_selecionada != "Todas" else TODAS_INDUSTRIAS):  # já considera PVA
+                for ind in (INDUSTRIAS_PERMITIDAS if pasta_selecionada != "Todas" else TODAS_INDUSTRIAS):
                     linha = {'Indústria': ind}
                     for m in meses_disp:
                         linha[m] = '✅' if ((df_cliente['Nome_Fabricante'] == ind) & (df_cliente['Mês_Ano'] == m)).any() else '❌'
