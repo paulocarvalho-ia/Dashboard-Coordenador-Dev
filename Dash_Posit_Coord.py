@@ -630,7 +630,7 @@ if base_op and comp_op:
         
         clientes_oportunidade = clientes_base.intersection(clientes_comp)
         if clientes_oportunidade:
-            st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram todas as indústrias da base e não compraram nenhuma da comparação.")
+            st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram da(s) indústria(s) selecionada(s) e não compraram da(s) indústria(s) comparada(s).")
             df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
             df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
             st.dataframe(df_op, use_container_width=True, hide_index=True)
