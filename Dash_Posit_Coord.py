@@ -30,7 +30,7 @@ st.caption("4 Elos Distribuidora Ltda. - Centro de Custo 622")
 # ============================================================
 # DATAS DE CONTROLE
 # ============================================================
-COMPILATION_DATE = "30/07/2026 10:00"  # ⚠️ Atualize a cada deploy
+COMPILATION_DATE = "03/08/2026 10:00"  # ⚠️ Atualize a cada deploy
 
 # ============================================================
 # CONEXÃO COM GOOGLE SHEETS (ABAS DE TESTE SEM ESPAÇOS)
@@ -255,7 +255,7 @@ meta_total = st.sidebar.number_input("Meta Carteira Total (%)", min_value=0, max
 st.session_state['meta_total'] = meta_total
 
 # ============================================================
-# APLICAR FILTROS (COMUM A TODOS OS CARDS, EXCETO MÊS GLOBAL)
+# FUNÇÃO PARA APLICAR FILTROS COMUNS (exceto mês global)
 # ============================================================
 def aplicar_filtros_comuns(df, incluir_mes=True):
     """Aplica todos os filtros ao DataFrame, opcionalmente incluindo o mês global."""
@@ -289,19 +289,19 @@ def aplicar_filtros_comuns(df, incluir_mes=True):
 
 # DataFrames principais (com filtro de mês global)
 df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
-df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)  # histórico não filtra mês, apenas os demais filtros
+df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)  # histórico não filtra mês
 
 # DataFrame base para os relatórios internos (sem filtro de mês global)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
 # ============================================================
-# APLICAR JANELA MÓVEL (BASE ATIVA)
+# APLICAR JANELA MÓVEL (BASE ATIVA) - APENAS MESES ANTERIORES
 # ============================================================
 if mes_selecionado != "Todos" and ano_selecionado != "Todos":
     mes_atual = int(mes_selecionado.split(' - ')[0])
     ano_atual = int(ano_selecionado)
     meses_janela = []
-    for i in range(janela_meses):
+    for i in range(1, janela_meses + 1):   # começa em 1 (mês anterior)
         mes = mes_atual - i
         ano = ano_atual
         while mes <= 0:
@@ -610,20 +610,23 @@ else:
 st.divider()
 
 # ============================================================
-# RELATÓRIO BATALHA NAVAL (COM SELETOR DE MESES INDEPENDENTE)
+# RELATÓRIO BATALHA NAVAL (COM SELETOR DE MESES INDEPENDENTE, PADRÃO ÚLTIMO MÊS)
 # ============================================================
 st.subheader("📋 Relatório Batalha Naval")
 
 meses_batalha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
 if 'meses_batalha_sel' not in st.session_state:
-    st.session_state['meses_batalha_sel'] = meses_batalha.copy()
+    st.session_state['meses_batalha_sel'] = [meses_batalha[-1]] if meses_batalha else []
 meses_sel_batalha = st.multiselect(
-    "Selecione os meses para o relatório:",
+    "Selecione os meses para o relatório (padrão: último mês):",
     options=meses_batalha,
     default=st.session_state['meses_batalha_sel'],
     key='meses_batalha'
 )
 st.session_state['meses_batalha_sel'] = meses_sel_batalha
+
+if not meses_sel_batalha and meses_batalha:
+    meses_sel_batalha = [meses_batalha[-1]]
 
 df_relatorio = df_relatorio_base.copy()
 if meses_sel_batalha:
@@ -729,20 +732,23 @@ if st.button("Gerar Relatório Gerencial (HTML)"):
 st.divider()
 
 # ============================================================
-# FICHA DO CLIENTE (COM SELETOR DE MESES INDEPENDENTE)
+# FICHA DO CLIENTE (COM SELETOR DE MESES INDEPENDENTE, PADRÃO ÚLTIMO MÊS)
 # ============================================================
 st.subheader("🔍 Ficha do Cliente")
 
 meses_ficha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
 if 'meses_ficha_sel' not in st.session_state:
-    st.session_state['meses_ficha_sel'] = meses_ficha.copy()
+    st.session_state['meses_ficha_sel'] = [meses_ficha[-1]] if meses_ficha else []
 meses_sel_ficha = st.multiselect(
-    "Selecione os meses para a ficha:",
+    "Selecione os meses para a ficha (padrão: último mês):",
     options=meses_ficha,
     default=st.session_state['meses_ficha_sel'],
     key='meses_ficha'
 )
 st.session_state['meses_ficha_sel'] = meses_sel_ficha
+
+if not meses_sel_ficha and meses_ficha:
+    meses_sel_ficha = [meses_ficha[-1]]
 
 df_ficha = df_relatorio_base.copy()
 if meses_sel_ficha:
