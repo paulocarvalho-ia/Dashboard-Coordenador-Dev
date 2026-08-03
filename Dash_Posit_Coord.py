@@ -580,9 +580,28 @@ else:
     st.info("Selecione um mês para visualizar a análise por município, canal e segmento.")
 
 # ============================================================
-# OPORTUNIDADES CRUZADAS (COM DOWNLOAD EXCEL)
+# OPORTUNIDADES CRUZADAS (COM SELETOR DE PERÍODO)
 # ============================================================
 st.subheader("🔀 Oportunidades Cruzadas")
+
+# Seletores de período independentes
+col_per1, col_per2 = st.columns(2)
+meses_oportunidades = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
+if not meses_oportunidades:
+    st.warning("Nenhum dado disponível para análise.")
+    st.stop()
+
+with col_per1:
+    mes_inicio = st.selectbox("Mês início:", options=meses_oportunidades, index=0, key='mes_inicio_op')
+with col_per2:
+    mes_fim = st.selectbox("Mês fim:", options=meses_oportunidades, index=len(meses_oportunidades)-1, key='mes_fim_op')
+
+# Filtrar dados pelo período selecionado
+if mes_inicio <= mes_fim:
+    df_oportunidades = df_relatorio_base[(df_relatorio_base['Mês_Ano'] >= mes_inicio) & (df_relatorio_base['Mês_Ano'] <= mes_fim)]
+else:
+    st.warning("Mês início deve ser menor ou igual ao mês fim.")
+    st.stop()
 
 col_op1, col_op2 = st.columns(2)
 with col_op1:
@@ -593,52 +612,61 @@ with col_op2:
     comp_op = st.multiselect("Selecione uma ou mais indústrias que o cliente NÃO comprou:", options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
 
 if base_op and comp_op:
-    clientes_base = set(df_filtrado[df_filtrado['Nome_Fabricante'].isin(base_op)]['codigo_cliente'].unique())
-    for ind in base_op:
-        clientes_base &= set(df_filtrado[df_filtrado['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
-    clientes_comp = set(df_filtrado['codigo_cliente'].unique())
-    for ind in comp_op:
-        clientes_comp -= set(df_filtrado[df_filtrado['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
-    clientes_oportunidade = clientes_base.intersection(clientes_comp)
-    if clientes_oportunidade:
-        st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram todas as indústrias da base e não compraram nenhuma da comparação.")
-        df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
-        df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
-        st.dataframe(df_op, use_container_width=True, hide_index=True)
-        output_op = BytesIO()
-        with pd.ExcelWriter(output_op, engine='openpyxl') as writer:
-            df_op.to_excel(writer, index=False, sheet_name='Oportunidades')
-        st.download_button("📥 Baixar Excel (Oportunidades)", data=output_op.getvalue(),
-                           file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+    # Verifica se cada indústria da base possui vendas no período selecionado
+    base_sem_vendas = [ind for ind in base_op if df_oportunidades[df_oportunidades['Nome_Fabricante'] == ind].empty]
+    if base_sem_vendas:
+        st.warning(f"As seguintes indústrias da base não tiveram vendas no período selecionado: {', '.join(base_sem_vendas)}.")
+        st.info("Nenhum cliente pode atender aos critérios com essas indústrias.")
     else:
-        st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
+        # Clientes que compraram TODAS as indústrias da base
+        clientes_base = set(df_oportunidades[df_oportunidades['Nome_Fabricante'] == base_op[0]]['codigo_cliente'].unique())
+        for ind in base_op[1:]:
+            clientes_base &= set(df_oportunidades[df_oportunidades['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
+        
+        # Clientes que NÃO compraram NENHUMA das indústrias de comparação
+        clientes_comp = set(df_oportunidades['codigo_cliente'].unique())
+        for ind in comp_op:
+            clientes_comp -= set(df_oportunidades[df_oportunidades['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
+        
+        clientes_oportunidade = clientes_base.intersection(clientes_comp)
+        if clientes_oportunidade:
+            st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram todas as indústrias da base e não compraram nenhuma da comparação.")
+            df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
+            df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
+            st.dataframe(df_op, use_container_width=True, hide_index=True)
+            output_op = BytesIO()
+            with pd.ExcelWriter(output_op, engine='openpyxl') as writer:
+                df_op.to_excel(writer, index=False, sheet_name='Oportunidades')
+            st.download_button("📥 Baixar Excel (Oportunidades)", data=output_op.getvalue(),
+                               file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+        else:
+            st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
 else:
     st.info("Selecione ao menos uma indústria em cada lista para visualizar as oportunidades cruzadas.")
 st.divider()
 
 # ============================================================
-# RELATÓRIO BATALHA NAVAL (COM SELETOR DE MESES INDEPENDENTE, PADRÃO ÚLTIMO MÊS)
+# RELATÓRIO BATALHA NAVAL (COM SELETOR DE PERÍODO)
 # ============================================================
 st.subheader("📋 Relatório Batalha Naval")
 
 meses_batalha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
-if 'meses_batalha_sel' not in st.session_state:
-    st.session_state['meses_batalha_sel'] = [meses_batalha[-1]] if meses_batalha else []
-meses_sel_batalha = st.multiselect(
-    "Selecione os meses para o relatório (padrão: último mês):",
-    options=meses_batalha,
-    default=st.session_state['meses_batalha_sel'],
-    key='meses_batalha'
-)
-st.session_state['meses_batalha_sel'] = meses_sel_batalha
+if not meses_batalha:
+    st.warning("Nenhum dado disponível para o relatório.")
+    st.stop()
 
-if not meses_sel_batalha and meses_batalha:
-    meses_sel_batalha = [meses_batalha[-1]]
+col_bat1, col_bat2 = st.columns(2)
+with col_bat1:
+    mes_bat_inicio = st.selectbox("Mês início:", options=meses_batalha, index=0, key='mes_bat_inicio')
+with col_bat2:
+    mes_bat_fim = st.selectbox("Mês fim:", options=meses_batalha, index=len(meses_batalha)-1, key='mes_bat_fim')
 
-df_relatorio = df_relatorio_base.copy()
-if meses_sel_batalha:
-    df_relatorio = df_relatorio[df_relatorio['Mês_Ano'].isin(meses_sel_batalha)]
+if mes_bat_inicio <= mes_bat_fim:
+    df_relatorio = df_relatorio_base[(df_relatorio_base['Mês_Ano'] >= mes_bat_inicio) & (df_relatorio_base['Mês_Ano'] <= mes_bat_fim)]
+else:
+    st.warning("Mês início deve ser menor ou igual ao mês fim.")
+    st.stop()
 
 matriz = df_relatorio.pivot_table(index='codigo_cliente', columns='Nome_Fabricante', aggfunc='size', fill_value=0)
 mapa_nomes = df_relatorio[['codigo_cliente', 'nome_cliente']].drop_duplicates('codigo_cliente')
@@ -700,67 +728,26 @@ with st.expander("👁️ Visualizar tabela"):
 st.divider()
 
 # ============================================================
-# EXPORTAÇÃO DO RELATÓRIO GERENCIAL (SEM RANKING)
-# ============================================================
-st.subheader("📑 Relatório Gerencial")
-if st.button("Gerar Relatório Gerencial (HTML)"):
-    html_geral = f"""
-    <html><head><meta charset="UTF-8">
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 30px; color: #333; }}
-        h1 {{ color: #1a3a4a; }}
-        h2 {{ color: #2c3e50; margin-top: 30px; }}
-        .metric-box {{ display: inline-block; margin: 10px; padding: 15px; background: #f8f9fa; border-radius: 8px; min-width: 150px; }}
-        .metric-box strong {{ display: block; font-size: 24px; color: #27ae60; }}
-        table {{ border-collapse: collapse; width: 100%; margin: 15px 0; }}
-        th {{ background-color: #1a3a4a; color: white; padding: 8px; }}
-        td {{ padding: 6px; border: 1px solid #ddd; }}
-        .footer {{ margin-top: 40px; font-size: 11px; color: #888; text-align: center; }}
-    </style></head><body>
-    <h1>Relatório Gerencial - 4 Elos Distribuidora</h1>
-    <p>Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Filtros: Pasta={pasta_selecionada}, Coordenador={coordenador_selecionado}, Vendedor={vendedor_selecionado}, Ano={ano_selecionado}, Mês={mes_selecionado}</p>
-    <h2>Carteira Ativa (Janela {janela_meses} meses)</h2>
-    <div class="metric-box"><strong>{carteira_ativa_total}</strong> Clientes Ativos</div>
-    <div class="metric-box"><strong>{positivados_periodo}</strong> Positivados no Mês</div>
-    <div class="metric-box"><strong>{pct_ativa:.1f}%</strong> % Positivação (Ativa)</div>
-    <h2>Carteira Total</h2>
-    <div class="metric-box"><strong>{total_clientes_base}</strong> Clientes na Carteira</div>
-    <div class="metric-box"><strong>{pct_total:.1f}%</strong> % Positivação (Total)</div>
-    <div class="metric-box"><strong>{cobertura_media:.1f}</strong> Cobertura Média</div>
-    <h2>Performance por Vendedor</h2>
-    {perf_vendedor[['Vendedor', 'Pasta', '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media']].to_html(index=False)}
-    <div class="footer">4 Elos Distribuidora Ltda. - Centro de Custo 622</div>
-    </body></html>
-    """
-    st.download_button("📥 Baixar Relatório Gerencial (HTML)", data=html_geral.encode('utf-8'),
-                       file_name=f'relatorio_gerencial_{datetime.now().strftime("%Y%m%d_%H%M")}.html',
-                       mime='text/html', use_container_width=True)
-    st.info("Clique no botão acima para baixar o relatório. Abra o arquivo no navegador e salve como PDF (Ctrl+P).")
-
-st.divider()
-
-# ============================================================
-# FICHA DO CLIENTE (COM SELETOR DE MESES INDEPENDENTE, PADRÃO ÚLTIMO MÊS)
+# FICHA DO CLIENTE (COM SELETOR DE PERÍODO)
 # ============================================================
 st.subheader("🔍 Ficha do Cliente")
 
 meses_ficha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
-if 'meses_ficha_sel' not in st.session_state:
-    st.session_state['meses_ficha_sel'] = [meses_ficha[-1]] if meses_ficha else []
-meses_sel_ficha = st.multiselect(
-    "Selecione os meses para a ficha (padrão: último mês):",
-    options=meses_ficha,
-    default=st.session_state['meses_ficha_sel'],
-    key='meses_ficha'
-)
-st.session_state['meses_ficha_sel'] = meses_sel_ficha
+if not meses_ficha:
+    st.warning("Nenhum dado disponível para a ficha.")
+    st.stop()
 
-if not meses_sel_ficha and meses_ficha:
-    meses_sel_ficha = [meses_ficha[-1]]
+col_fich1, col_fich2 = st.columns(2)
+with col_fich1:
+    mes_ficha_inicio = st.selectbox("Mês início:", options=meses_ficha, index=0, key='mes_ficha_inicio')
+with col_fich2:
+    mes_ficha_fim = st.selectbox("Mês fim:", options=meses_ficha, index=len(meses_ficha)-1, key='mes_ficha_fim')
 
-df_ficha = df_relatorio_base.copy()
-if meses_sel_ficha:
-    df_ficha = df_ficha[df_ficha['Mês_Ano'].isin(meses_sel_ficha)]
+if mes_ficha_inicio <= mes_ficha_fim:
+    df_ficha = df_relatorio_base[(df_relatorio_base['Mês_Ano'] >= mes_ficha_inicio) & (df_relatorio_base['Mês_Ano'] <= mes_ficha_fim)]
+else:
+    st.warning("Mês início deve ser menor ou igual ao mês fim.")
+    st.stop()
 
 try:
     df_clientes_unicos = df_ficha[['codigo_cliente', 'nome_cliente']].drop_duplicates().dropna()
