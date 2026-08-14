@@ -36,7 +36,6 @@ SHEET_ID = "100LtVtmS76bT2CJd-EIb-bHTgX3F1BVm8Er5vUa-VYQ"
 def load_data():
     url_base = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet="
 
-    # BASE de produção e BI de teste com novos campos
     df_base = pd.read_csv(url_base + "BASE")
     df_bi   = pd.read_csv(url_base + "BI_Teste")
     df_fabricantes = pd.read_csv(url_base + "FABRICANTE")
@@ -44,7 +43,10 @@ def load_data():
 
     data_dados = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    # Renomear colunas da BASE (produção já está com os nomes novos)
+    # Normalizar nomes de colunas da BASE (remover espaços extras)
+    df_base.columns = [str(col).strip() for col in df_base.columns]
+
+    # Renomear colunas da BASE (produção já está com nomes novos)
     df_base = df_base.rename(columns={
         'Código Cliente': 'codigo_cliente',
         'Cliente': 'nome_cliente',
@@ -56,16 +58,28 @@ def load_data():
         'Segmento': 'Segmento'
     })
 
-    # Renomear colunas da BI_Teste
-    df_bi = df_bi.rename(columns={
-        'Código Cliente': 'codigo_cliente',
-        'Nome_Vendedor_Ajustado': 'nome_vendedor_bi',
-        'Ano e Mês': 'Ano_e_Mes',
-        'Nome Fabricante': 'Nome_Fabricante',
-        'Linha de Produto': 'Linha_Produto',
-        'Categoria': 'Categoria',
-        'Valor das Vendas': 'Valor_Vendas'
-    })
+    # Normalizar nomes de colunas da BI_Teste (minúsculas e sem espaços extras)
+    df_bi.columns = [str(col).strip().lower() for col in df_bi.columns]
+
+    # Criar dicionário de renomeação dinâmico baseado em palavras-chave
+    bi_rename = {}
+    for col in df_bi.columns:
+        if 'código cliente' in col or 'codigo cliente' in col:
+            bi_rename[col] = 'codigo_cliente'
+        elif 'vendedor' in col and 'ajustado' in col:
+            bi_rename[col] = 'nome_vendedor_bi'
+        elif 'ano e mês' in col or 'ano e mes' in col:
+            bi_rename[col] = 'Ano_e_Mes'
+        elif 'fabricante' in col:
+            bi_rename[col] = 'Nome_Fabricante'
+        elif 'linha de produto' in col:
+            bi_rename[col] = 'Linha_Produto'
+        elif 'categoria' in col:
+            bi_rename[col] = 'Categoria'
+        elif 'valor das vendas' in col:
+            bi_rename[col] = 'Valor_Vendas'
+
+    df_bi = df_bi.rename(columns=bi_rename)
 
     # Datas
     df_bi['Data'] = pd.to_datetime(df_bi['Ano_e_Mes'] + '-01', errors='coerce')
@@ -379,7 +393,6 @@ if clientes_sem_venda_ativos:
     with st.expander(f"🔴 {len(clientes_sem_venda_ativos)} clientes sem venda no mês (Carteira Ativa)"):
         st.dataframe(df_sem_venda_ativos, use_container_width=True, hide_index=True)
 
-    # Download Excel (Carteira Ativa)
     output_ativa = BytesIO()
     with pd.ExcelWriter(output_ativa, engine='openpyxl') as writer:
         df_sem_venda_ativos.to_excel(writer, index=False, sheet_name='Sem Venda Ativa')
@@ -428,7 +441,6 @@ if clientes_sem_venda_carteira:
     with st.expander(f"🔴 {len(clientes_sem_venda_carteira)} clientes sem venda (Carteira Total)"):
         st.dataframe(df_sem_venda_total, use_container_width=True, hide_index=True)
 
-    # Download Excel (Carteira Total)
     output_total = BytesIO()
     with pd.ExcelWriter(output_total, engine='openpyxl') as writer:
         df_sem_venda_total.to_excel(writer, index=False, sheet_name='Sem Venda Total')
