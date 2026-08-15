@@ -524,7 +524,7 @@ elif opcao == "🟢 Softys Falcon":
         meses_ano = [f"{ano_atual}-{m:02d}" for m in range(1, mes_atual_num + 1)]
         df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['Mês'] <= mes_atual_num)]
 
-        # Gráfico mensal + YTD
+        # === Gráfico mensal + YTD ===
         monthly_totals = df_softys_ano.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
         monthly_totals.columns = ['Mês', 'Clientes']
         monthly_totals = monthly_totals[monthly_totals['Mês'].isin(meses_ano)]
@@ -552,7 +552,7 @@ elif opcao == "🟢 Softys Falcon":
         fig_softys.update_layout(barmode='group', uniformtext_minsize=8)
         st.plotly_chart(fig_softys, use_container_width=True)
 
-        # Tabela mensal por categoria + YTD
+        # === Tabela mensal por categoria + YTD ===
         pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='Mês_Ano', values='codigo_cliente', aggfunc='nunique', fill_value=0)
         pivot_mensal = pivot_mensal.reindex(columns=meses_ano, fill_value=0)
         ytd_series = df_softys_ano.groupby('Categoria')['codigo_cliente'].nunique()
@@ -579,7 +579,7 @@ elif opcao == "🟢 Softys Falcon":
                            file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.html',
                            mime='text/html', use_container_width=True)
 
-        # Batalha Naval Softys Falcon
+        # === Batalha Naval Softys Falcon ===
         st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
         df_softys_clientes = df_softys_ano[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
         clientes_pivot = df_softys_clientes.pivot_table(index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
