@@ -149,7 +149,6 @@ if not st.query_params:
                 'municipio_filtro', 'canal_filtro', 'segmento_filtro', 'categoria_filtro', 'linha_filtro']:
         st.session_state.pop(key, None)
 
-# Pasta
 lista_pastas = ["Todas", "PA", "PV", "PVA"]
 if 'pasta' not in st.session_state: st.session_state['pasta'] = 'Todas'
 pasta_selecionada = st.sidebar.selectbox("Pasta", lista_pastas, index=lista_pastas.index(st.session_state['pasta']) if st.session_state['pasta'] in lista_pastas else 0, key='pasta_select')
@@ -160,13 +159,11 @@ if pasta_selecionada in ["Todas", "PVA"]:
 else:
     INDUSTRIAS_PERMITIDAS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
 
-# Coordenador
 lista_coordenadores = ["Todos"] + sorted(df_base['Nome_Coordenador'].dropna().unique().tolist())
 if 'coordenador' not in st.session_state: st.session_state['coordenador'] = 'Todos'
 coordenador_selecionado = st.sidebar.selectbox("Coordenador", lista_coordenadores, index=lista_coordenadores.index(st.session_state['coordenador']), key='coordenador_select')
 st.session_state['coordenador'] = coordenador_selecionado
 
-# Vendedor
 if coordenador_selecionado != "Todos":
     vendedores_base = df_base[df_base['Nome_Coordenador'] == coordenador_selecionado]['nome_vendedor_base'].dropna().unique()
 else:
@@ -178,7 +175,6 @@ if 'vendedor' not in st.session_state: st.session_state['vendedor'] = 'Todos'
 vendedor_selecionado = st.sidebar.selectbox("Vendedor", lista_vendedores, index=lista_vendedores.index(st.session_state['vendedor']), key='vendedor_select')
 st.session_state['vendedor'] = vendedor_selecionado
 
-# Coligação
 if vendedor_selecionado != "Todos":
     clientes_do_vendedor = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].unique()
     coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_vendedor)]['Cliente_Coligacao'].dropna().unique()
@@ -193,7 +189,6 @@ if 'coligacao' not in st.session_state: st.session_state['coligacao'] = 'Todas'
 coligacao_selecionada = st.sidebar.selectbox("Coligação", lista_coligacoes, index=lista_coligacoes.index(st.session_state['coligacao']), key='coligacao_select')
 st.session_state['coligacao'] = coligacao_selecionada
 
-# Município, Canal, Segmento
 if 'municipio_filtro' not in st.session_state: st.session_state['municipio_filtro'] = []
 municipio_opcoes = sorted(df_base['Municipio'].dropna().unique())
 municipio_selecionado = st.sidebar.multiselect("Município(s)", options=municipio_opcoes, default=st.session_state['municipio_filtro'], placeholder="Selecione...")
@@ -209,7 +204,6 @@ segmento_opcoes = sorted(df_base['Segmento'].dropna().unique())
 segmento_selecionado = st.sidebar.multiselect("Segmento(s)", options=segmento_opcoes, default=st.session_state['segmento_filtro'], placeholder="Selecione...")
 st.session_state['segmento_filtro'] = segmento_selecionado
 
-# Ano e Mês
 anos_disponiveis = sorted(df_merged['Ano'].dropna().unique())
 lista_anos = ["Todos"] + [str(int(a)) for a in anos_disponiveis]
 if 'ano' not in st.session_state:
@@ -234,7 +228,6 @@ if st.session_state['mes'] not in lista_meses: st.session_state['mes'] = 'Todos'
 mes_selecionado = st.sidebar.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_select')
 st.session_state['mes'] = mes_selecionado
 
-# Janela móvel
 st.sidebar.divider()
 st.sidebar.header("📆 Janela da Base Ativa")
 if 'janela_meses' not in st.session_state:
@@ -242,7 +235,6 @@ if 'janela_meses' not in st.session_state:
 janela_meses = st.sidebar.slider("Nº de meses anteriores", min_value=3, max_value=6, value=st.session_state['janela_meses'], step=1, key='janela_slider')
 st.session_state['janela_meses'] = janela_meses
 
-# Indústria, Categoria, Linha
 st.sidebar.divider()
 st.sidebar.header("🏭 Filtro por Indústria")
 if pasta_selecionada in ["Todas", "PVA"]:
@@ -263,7 +255,6 @@ linha_opcoes = sorted(df_bi['Linha_Produto'].dropna().unique())
 linha_selecionada = st.sidebar.multiselect("Linha(s) de Produto", options=linha_opcoes, default=st.session_state['linha_filtro'], placeholder="Selecione...")
 st.session_state['linha_filtro'] = linha_selecionada
 
-# Metas
 st.sidebar.divider()
 st.sidebar.header("🎯 Metas")
 if 'meta_ativa' not in st.session_state: st.session_state['meta_ativa'] = 70
@@ -310,7 +301,6 @@ def aplicar_filtros_comuns(df, incluir_mes=True):
         df = df[df['Linha_Produto'].isin(linha_selecionada)]
     return df
 
-# DataFrames principais
 df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
 df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
@@ -512,7 +502,7 @@ st.dataframe(perf_vendedor[['Vendedor', 'Pasta', 'Total_Clientes', 'Clientes_Ati
 st.divider()
 
 # ============================================================
-# NOVOS CARDS ESTRATÉGICOS
+# FOCOS ESTRATÉGICOS
 # ============================================================
 
 # ---------- 1. SOFTYS FALCON ----------
@@ -521,43 +511,112 @@ st.subheader("🟢 Foco Estratégico: Softys Falcon")
 df_softys = df_relatorio_base[df_relatorio_base['Nome_Fabricante'] == 'SOFTYS FALCON'].copy()
 
 if not df_softys.empty:
+    # Determinar meses da janela e ano de referência
+    if mes_selecionado != "Todos":
+        if ano_selecionado != "Todos":
+            ano_ref = int(ano_selecionado)
+        else:
+            ano_ref = df_softys['Ano'].max()
+        mes_atual_num = int(mes_selecionado.split(' - ')[0])
+
+        # Meses da janela (apenas os 6 anteriores)
+        months_window = []
+        for i in range(1, janela_meses + 1):
+            mes = mes_atual_num - i
+            ano = ano_ref
+            while mes <= 0:
+                mes += 12
+                ano -= 1
+            months_window.append(f"{ano}-{mes:02d}")
+
+        # Ordenar do mais antigo para o mais recente
+        months_window = sorted(months_window)
+
+        current_month_str = f"{ano_ref}-{mes_atual_num:02d}"
+    else:
+        months_window = sorted(df_softys['Mês_Ano'].unique())
+        current_month_str = months_window[-1] if months_window else None
+
+    df_softys_window = df_softys[df_softys['Mês_Ano'].isin(months_window)].copy()
+
+    # ---- GRÁFICO: Positivação mensal + YTD ----
+    st.markdown("**Positivação Mensal e YTD (Softys Falcon)**")
+
+    # Totais mensais (clientes únicos)
+    monthly_totals = df_softys_window.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
+    monthly_totals.columns = ['Mês', 'Clientes']
+
+    # YTD (clientes únicos do ano até o mês atual)
+    if mes_selecionado != "Todos":
+        ano_ref_ytd = ano_ref
+        mes_ytd = mes_atual_num
+    else:
+        ano_ref_ytd = df_softys['Ano'].max()
+        mes_ytd = df_softys['Mês'].max()
+    df_softys_ytd = df_softys[(df_softys['Ano'] == ano_ref_ytd) & (df_softys['Mês'] <= mes_ytd)]
+    ytd_total = df_softys_ytd['codigo_cliente'].nunique()
+
+    # Adicionar YTD ao DataFrame do gráfico
+    graph_df = monthly_totals.copy()
+    graph_df = graph_df.append({'Mês': 'YTD', 'Clientes': ytd_total}, ignore_index=True)
+
+    # Criar gráfico com cores distintas para YTD
+    fig_softys = go.Figure()
+    # Barras mensais
+    mensal_df = graph_df[graph_df['Mês'] != 'YTD']
+    fig_softys.add_trace(go.Bar(
+        x=mensal_df['Mês'],
+        y=mensal_df['Clientes'],
+        name='Mensal',
+        marker_color='#2E8B57'
+    ))
+    # Barra YTD
+    ytd_df = graph_df[graph_df['Mês'] == 'YTD']
+    if not ytd_df.empty:
+        fig_softys.add_trace(go.Bar(
+            x=ytd_df['Mês'],
+            y=ytd_df['Clientes'],
+            name='YTD',
+            marker_color='#1a3a4a'  # cor diferente
+        ))
+    fig_softys.update_layout(
+        title='Positivação Softys Falcon (Mensal + YTD)',
+        xaxis_title='',
+        yaxis_title='Clientes únicos',
+        barmode='group'
+    )
+    st.plotly_chart(fig_softys, use_container_width=True)
+
+    # ---- TABELA MENSAL POR CATEGORIA (com YTD) ----
     st.markdown("**Positivação por Categoria (mês a mês + YTD)**")
 
-    # Tabela mensal por categoria
-    if mes_selecionado != "Todos":
-        # usamos a janela móvel, mas queremos mês a mês da janela; considerar todos os meses do ano ou apenas janela?
-        # Ajuste: se o filtro lateral de mês estiver definido, mostrar os meses da janela (6 meses) e YTD.
-        # Vamos pegar os meses da janela (que já estão em meses_janela).
-        months_in_window = [f"{a}-{m:02d}" for a, m in meses_janela]
-    else:
-        months_in_window = sorted(df_softys['Mês_Ano'].unique())
+    # Pivot por categoria e mês
+    pivot_mensal = df_softys_window.pivot_table(
+        index='Categoria',
+        columns='Mês_Ano',
+        values='codigo_cliente',
+        aggfunc='nunique',
+        fill_value=0
+    )
+    # Ordenar colunas conforme months_window (do mais antigo para o mais recente)
+    if months_window:
+        pivot_mensal = pivot_mensal.reindex(columns=[c for c in months_window if c in pivot_mensal.columns], fill_value=0)
 
-    df_softys_window = df_softys[df_softys['Mês_Ano'].isin(months_in_window)].copy()
-
-    # Pivot mensal
-    pivot_mensal = df_softys_window.pivot_table(index='Categoria', columns='Mês_Ano', aggfunc='size', fill_value=0)
-    # Reordenar colunas conforme a sequência dos meses
-    if months_in_window:
-        pivot_mensal = pivot_mensal.reindex(columns=[c for c in months_in_window if c in pivot_mensal.columns], fill_value=0)
-
-    # YTD: acumulado do ano até o mês atual
-    if mes_selecionado != "Todos":
-        ano_ref = int(ano_selecionado) if ano_selecionado != "Todos" else df_softys['Ano'].max()
-        mes_atual_num = int(mes_selecionado.split(' - ')[0])
-        df_softys_ytd = df_softys[(df_softys['Ano'] == ano_ref) & (df_softys['Mês'] <= mes_atual_num)]
-    else:
-        df_softys_ytd = df_softys
+    # YTD por categoria
     ytd_series = df_softys_ytd.groupby('Categoria')['codigo_cliente'].nunique()
-
-    # Montar tabela final
+    # Juntar
     tabela_mensal = pivot_mensal.copy()
     tabela_mensal['YTD'] = ytd_series
     tabela_mensal = tabela_mensal.reset_index()
-    tabela_mensal.columns = ['Categoria'] + [c for c in tabela_mensal.columns if c != 'Categoria']
+    tabela_mensal = tabela_mensal.fillna(0)
+
+    # Reordenar colunas: categoria, meses em ordem crescente, YTD por último
+    ordered_cols = ['Categoria'] + [c for c in months_window if c in tabela_mensal.columns] + ['YTD']
+    tabela_mensal = tabela_mensal[ordered_cols]
 
     st.dataframe(tabela_mensal, use_container_width=True, hide_index=True)
 
-    # Downloads Excel e PDF da tabela mensal
+    # Downloads da tabela mensal
     output_softys_mensal = BytesIO()
     with pd.ExcelWriter(output_softys_mensal, engine='openpyxl') as writer:
         tabela_mensal.to_excel(writer, index=False, sheet_name='Softys Mensal')
@@ -582,31 +641,38 @@ if not df_softys.empty:
                        mime='text/html', use_container_width=True)
     st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 
-    # Lista de clientes com colunas solicitadas e categorias
-    st.markdown("**Clientes Softys Falcon**")
+    # ---- BATALHA NAVAL: Clientes que compraram Softys Falcon ----
+    st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
+
+    # Preparar dados de clientes e categorias
     df_softys_clientes = df_softys[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
-    # Pivot para mostrar categorias como colunas (0/1)
-    clientes_pivot = df_softys_clientes.pivot_table(index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
-                                                    columns='Categoria', aggfunc='size', fill_value=0).reset_index()
-    # Converter para binário? O aggfunc size já dá contagem, mas como podem haver duplicatas, vamos usar >0
+    # Pivot: clientes x categorias (0/1)
+    clientes_pivot = df_softys_clientes.pivot_table(
+        index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
+        columns='Categoria',
+        values='codigo_cliente',
+        aggfunc='nunique',
+        fill_value=0
+    ).reset_index()
+
+    # Converter para 0/1
     cat_cols = [c for c in clientes_pivot.columns if c not in ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']]
     clientes_pivot[cat_cols] = (clientes_pivot[cat_cols] > 0).astype(int)
-    # Adicionar coluna total
+    # Adicionar total de categorias
     clientes_pivot['Total'] = clientes_pivot[cat_cols].sum(axis=1)
 
-    with st.expander("👁️ Ver lista de clientes"):
+    with st.expander("👁️ Visualizar Batalha Naval Softys Falcon"):
         st.dataframe(clientes_pivot, use_container_width=True, hide_index=True)
 
-    # Download Excel clientes
-    output_softys_clientes = BytesIO()
-    with pd.ExcelWriter(output_softys_clientes, engine='openpyxl') as writer:
-        clientes_pivot.to_excel(writer, index=False, sheet_name='Clientes Softys')
-    st.download_button("📥 Baixar Excel (Clientes)", data=output_softys_clientes.getvalue(),
-                       file_name=f'softys_clientes_{datetime.now().strftime("%Y%m%d")}.xlsx',
+    # Downloads da Batalha Naval
+    output_softys_bn = BytesIO()
+    with pd.ExcelWriter(output_softys_bn, engine='openpyxl') as writer:
+        clientes_pivot.to_excel(writer, index=False, sheet_name='Batalha Naval Softys')
+    st.download_button("📥 Baixar Excel (Batalha Naval Softys)", data=output_softys_bn.getvalue(),
+                       file_name=f'batalha_naval_softys_{datetime.now().strftime("%Y%m%d")}.xlsx',
                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
 
-    # PDF de clientes
-    html_softys_clientes = f"""
+    html_softys_bn = f"""
     <html><head><meta charset="UTF-8"><style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
         h1 {{ font-size: 16px; }}
@@ -614,12 +680,12 @@ if not df_softys.empty:
         th {{ background-color: #1a3a4a; color: white; padding: 5px; }}
         td {{ padding: 4px; border: 1px solid #ddd; }}
     </style></head><body>
-        <h1>Clientes Softys Falcon</h1>
+        <h1>Batalha Naval Softys Falcon</h1>
         {clientes_pivot.to_html(index=False)}
     </body></html>
     """
-    st.download_button("📥 Baixar PDF (Clientes)", data=html_softys_clientes.encode('utf-8'),
-                       file_name=f'softys_clientes_{datetime.now().strftime("%Y%m%d")}.html',
+    st.download_button("📥 Baixar PDF (Batalha Naval Softys)", data=html_softys_bn.encode('utf-8'),
+                       file_name=f'batalha_naval_softys_{datetime.now().strftime("%Y%m%d")}.html',
                        mime='text/html', use_container_width=True)
     st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 
@@ -631,11 +697,9 @@ st.divider()
 # ---------- 2. KENVUE (CANAL PERFUMARIA) ----------
 st.subheader("🟠 Foco Estratégico: Kenvue no Canal Perfumaria")
 
-# Perfumarias ativas na janela móvel
 df_perfumarias_ativas = df_historico_janela[df_historico_janela['Canal'] == 'PERFUMARIA'].copy()
 
 if not df_perfumarias_ativas.empty:
-    # Kenvue no mês atual (mês selecionado)
     df_kenvue_mes = df_filtrado[(df_filtrado['Nome_Fabricante'] == 'KENVUE') & (df_filtrado['Canal'] == 'PERFUMARIA')].copy()
 
     if not df_kenvue_mes.empty:
@@ -687,7 +751,6 @@ if not df_perfumarias_ativas.empty:
                                file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.html',
                                mime='text/html', use_container_width=True)
 
-        # Quadro por vendedor
         st.markdown("**Meta por Vendedor (50% das perfumarias ativas)**")
         vendedores_perf = df_perfumarias_ativas['nome_vendedor_base'].dropna().unique()
         lista_kenvue_vend = []
@@ -728,7 +791,6 @@ st.subheader("🟤 Foco Estratégico: Linha Cenoura & Bronze")
 df_cenoura = df_relatorio_base[df_relatorio_base['Linha_Produto'] == 'CENOURA & BRONZE'].copy()
 
 if not df_cenoura.empty:
-    # Definir meses da janela e mês atual
     if mes_selecionado != "Todos":
         if ano_selecionado != "Todos":
             ano_ref = int(ano_selecionado)
@@ -736,6 +798,7 @@ if not df_cenoura.empty:
             ano_ref = df_cenoura['Ano'].max()
         mes_atual_num = int(mes_selecionado.split(' - ')[0])
         months_window = [f"{a}-{m:02d}" for a, m in meses_janela]
+        months_window = sorted(months_window)
         current_month_str = f"{ano_ref}-{mes_atual_num:02d}"
     else:
         months_window = sorted(df_cenoura['Mês_Ano'].unique())
@@ -763,7 +826,6 @@ if not df_cenoura.empty:
         })
     df_cen_vend = pd.DataFrame(lista_cen)
 
-    # Gráfico 1: média 6M
     fig_cen_media = px.bar(df_cen_vend, x='Vendedor', y='Média 6M',
                            title='Positivação Média (6 meses) - Cenoura & Bronze',
                            text='Média 6M', color='Média 6M', color_continuous_scale='Blues')
@@ -771,7 +833,6 @@ if not df_cenoura.empty:
     fig_cen_media.update_layout(xaxis_title="", yaxis_title="Média de clientes")
     st.plotly_chart(fig_cen_media, use_container_width=True)
 
-    # Gráfico 2: mês atual
     fig_cen_mes = px.bar(df_cen_vend, x='Vendedor', y='Mês Atual',
                          title='Positivação no Mês - Cenoura & Bronze',
                          text='Mês Atual', color='Mês Atual', color_continuous_scale='Oranges')
@@ -779,10 +840,8 @@ if not df_cenoura.empty:
     fig_cen_mes.update_layout(xaxis_title="", yaxis_title="Clientes")
     st.plotly_chart(fig_cen_mes, use_container_width=True)
 
-    # Tabela
     st.dataframe(df_cen_vend, use_container_width=True, hide_index=True)
 
-    # Downloads
     output_cen = BytesIO()
     with pd.ExcelWriter(output_cen, engine='openpyxl') as writer:
         df_cen_vend.to_excel(writer, index=False, sheet_name='Cenoura Bronze')
@@ -795,7 +854,6 @@ if not df_cenoura.empty:
                        file_name=f'cenoura_bronze_resumo_{datetime.now().strftime("%Y%m%d")}.html',
                        mime='text/html', use_container_width=True)
 
-    # Relatório de clientes atendidos na janela mas não no mês
     st.markdown("**Clientes atendidos nos 6 meses, mas não no mês atual**")
     clientes_janela = df_cenoura_window['codigo_cliente'].unique()
     clientes_mes = df_cenoura_mes_atual['codigo_cliente'].unique() if not df_cenoura_mes_atual.empty else []
