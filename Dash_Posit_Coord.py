@@ -283,12 +283,19 @@ else:
 # NAVEGAÇÃO
 # ============================================================
 st.markdown("---")
-opcao = st.radio(
-    "Selecione a página:",
-    ["🏠 Visão Geral", "🟢 Softys Falcon", "🟠 Kenvue Perfumaria", "🟤 Cenoura & Bronze", "📋 Batalha Naval", "🔍 Ficha do Cliente"],
-    horizontal=True,
-    key='nav'
-)
+opcoes_paginas = [
+    "🏠 Visão Geral",
+    "👥 Performance Vendedor",
+    "📍 Positivação por Município",
+    "🏷️ Positivação por Segmento",
+    "🔀 Oportunidades Cruzadas",
+    "🟢 Softys Falcon",
+    "🟠 Kenvue Perfumaria",
+    "🟤 Cenoura & Bronze",
+    "📋 Batalha Naval",
+    "🔍 Ficha do Cliente"
+]
+opcao = st.radio("Selecione a página:", opcoes_paginas, horizontal=True, key='nav')
 
 # ============================================================
 # PÁGINA: VISÃO GERAL
@@ -355,6 +362,160 @@ if opcao == "🏠 Visão Geral":
     col1.metric("Clientes na Carteira", total_clientes_base)
     col2.metric("Clientes Positivados", total_positivados)
     col3.metric("% Positivação (Carteira Total)", f"{pct_total:.1f}%")
+
+# ============================================================
+# PÁGINA: PERFORMANCE POR VENDEDOR
+# ============================================================
+elif opcao == "👥 Performance Vendedor":
+    df_base_perf = df_base.copy()
+    if coordenador_selecionado != "Todos":
+        df_base_perf = df_base_perf[df_base_perf['Nome_Coordenador'] == coordenador_selecionado]
+    if vendedor_selecionado != "Todos":
+        df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor_selecionado]
+    if pasta_selecionada != "Todas":
+        vendedores_da_pasta = [v for v in df_base_perf['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
+        df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'].isin(vendedores_da_pasta)]
+    if municipio_selecionado:
+        df_base_perf = df_base_perf[df_base_perf['Municipio'].isin(municipio_selecionado)]
+    if canal_selecionado:
+        df_base_perf = df_base_perf[df_base_perf['Canal'].isin(canal_selecionado)]
+    if segmento_selecionado:
+        df_base_perf = df_base_perf[df_base_perf['Segmento'].isin(segmento_selecionado)]
+
+    if vendedor_selecionado != "Todos":
+        vendedores_base = [vendedor_selecionado]
+    else:
+        vendedores_base = df_filtrado['nome_vendedor'].dropna().unique()
+
+    perf_list = []
+    for vendedor in vendedores_base:
+        pasta_v = vendedor_pasta.get(vendedor, "")
+        clientes_carteira = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor]['codigo_cliente'].nunique()
+        clientes_ativos_hist = df_historico_janela[df_historico_janela['nome_vendedor'] == vendedor]['codigo_cliente'].nunique()
+        df_bi_vendedor = df_filtrado[df_filtrado['nome_vendedor'] == vendedor]
+        clientes_pos = df_bi_vendedor[df_bi_vendedor['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
+        cobertura = df_bi_vendedor.groupby('codigo_cliente')['Nome_Fabricante'].nunique()
+        cobertura_media_vend = cobertura.mean() if len(cobertura) > 0 else 0
+        cobertura_total_vend = df_bi_vendedor[['codigo_cliente', 'Nome_Fabricante']].dropna().drop_duplicates().shape[0]
+        pct_ativa_vend = (clientes_pos / clientes_ativos_hist * 100) if clientes_ativos_hist > 0 else 0
+        pct_total_vend = (clientes_pos / clientes_carteira * 100) if clientes_carteira > 0 else 0
+        perf_list.append({
+            'Vendedor': vendedor, 'Pasta': pasta_v,
+            'Total_Clientes': clientes_carteira, 'Clientes_Ativos_Hist': clientes_ativos_hist,
+            'Clientes_Positivados': clientes_pos,
+            '%_Positivação_Ativa': round(pct_ativa_vend, 1), '%_Positivação_Total': round(pct_total_vend, 1),
+            'Cobertura_Media': round(cobertura_media_vend, 1), 'Cobertura_Total': cobertura_total_vend
+        })
+    perf_vendedor = pd.DataFrame(perf_list).sort_values('%_Positivação_Ativa', ascending=False)
+
+    fig_ativa = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Ativa', title='% Positivação (Base Ativa)',
+                       text=perf_vendedor['%_Positivação_Ativa'].apply(lambda x: f'{x:.1f}%'),
+                       color='%_Positivação_Ativa', color_continuous_scale='Greens')
+    fig_ativa.add_hline(y=meta_ativa, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_ativa}%")
+    fig_ativa.update_traces(textposition='outside')
+    fig_ativa.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
+    st.plotly_chart(fig_ativa, use_container_width=True)
+
+    fig_total = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Total', title='% Positivação (Carteira Total)',
+                       text=perf_vendedor['%_Positivação_Total'].apply(lambda x: f'{x:.1f}%'),
+                       color='%_Positivação_Total', color_continuous_scale='Blues')
+    fig_total.add_hline(y=meta_total, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_total}%")
+    fig_total.update_traces(textposition='outside')
+    fig_total.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
+    st.plotly_chart(fig_total, use_container_width=True)
+
+    fig_cob = px.bar(perf_vendedor, x='Vendedor', y='Cobertura_Media', title='Cobertura Média por Vendedor',
+                     text=perf_vendedor['Cobertura_Media'].apply(lambda x: f'{x:.1f}'),
+                     color='Cobertura_Media', color_continuous_scale='Oranges')
+    fig_cob.update_traces(textposition='outside')
+    fig_cob.update_layout(xaxis_title="", yaxis_title="Indústrias/Cliente")
+    st.plotly_chart(fig_cob, use_container_width=True)
+
+    st.dataframe(perf_vendedor[['Vendedor', 'Pasta', 'Total_Clientes', 'Clientes_Ativos_Hist', 'Clientes_Positivados',
+                                '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media', 'Cobertura_Total']],
+                 use_container_width=True, hide_index=True)
+
+# ============================================================
+# PÁGINA: POSITIVAÇÃO POR MUNICÍPIO
+# ============================================================
+elif opcao == "📍 Positivação por Município":
+    st.subheader("📍 Positivação por Município")
+    df_munic = df_filtrado.groupby('Municipio')['codigo_cliente'].nunique().reset_index()
+    df_munic.columns = ['Município', 'Clientes Positivados']
+    df_munic = df_munic.sort_values('Clientes Positivados', ascending=False)
+
+    fig_munic = px.bar(df_munic, x='Município', y='Clientes Positivados', text='Clientes Positivados',
+                       color='Clientes Positivados', color_continuous_scale='Blues')
+    fig_munic.update_traces(textposition='outside')
+    fig_munic.update_layout(xaxis_title="", yaxis_title="Clientes Positivados")
+    st.plotly_chart(fig_munic, use_container_width=True)
+
+    st.dataframe(df_munic, use_container_width=True, hide_index=True)
+
+# ============================================================
+# PÁGINA: POSITIVAÇÃO POR SEGMENTO
+# ============================================================
+elif opcao == "🏷️ Positivação por Segmento":
+    st.subheader("🏷️ Positivação por Segmento")
+    df_seg = df_filtrado.groupby('Segmento')['codigo_cliente'].nunique().reset_index()
+    df_seg.columns = ['Segmento', 'Clientes Positivados']
+    df_seg = df_seg.sort_values('Clientes Positivados', ascending=False)
+
+    fig_seg = px.bar(df_seg, x='Segmento', y='Clientes Positivados', text='Clientes Positivados',
+                     color='Clientes Positivados', color_continuous_scale='Greens')
+    fig_seg.update_traces(textposition='outside')
+    fig_seg.update_layout(xaxis_title="", yaxis_title="Clientes Positivados")
+    st.plotly_chart(fig_seg, use_container_width=True)
+
+    st.dataframe(df_seg, use_container_width=True, hide_index=True)
+
+# ============================================================
+# PÁGINA: OPORTUNIDADES CRUZADAS
+# ============================================================
+elif opcao == "🔀 Oportunidades Cruzadas":
+    st.subheader("🔀 Oportunidades Cruzadas")
+
+    col_op1, col_op2 = st.columns(2)
+    with col_op1:
+        st.markdown("**Indústrias da Base (compradas)**")
+        base_op = st.multiselect("Selecione uma ou mais indústrias que o cliente comprou:", options=INDUSTRIAS_DISPONIVEIS, key='base_cruzada')
+    with col_op2:
+        st.markdown("**Indústrias de Comparação (não compradas)**")
+        comp_op = st.multiselect("Selecione uma ou mais indústrias que o cliente NÃO comprou:", options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
+
+    if base_op and comp_op:
+        # Usar df_relatorio_base ou df_filtrado? O ideal é considerar o período filtrado (df_filtrado)
+        df_analise = df_filtrado.copy()
+
+        base_sem_vendas = [ind for ind in base_op if df_analise[df_analise['Nome_Fabricante'] == ind].empty]
+        if base_sem_vendas:
+            st.warning(f"As seguintes indústrias da base não tiveram vendas no período selecionado: {', '.join(base_sem_vendas)}.")
+            st.info("Nenhum cliente pode atender aos critérios com essas indústrias.")
+        else:
+            clientes_base = set(df_analise[df_analise['Nome_Fabricante'] == base_op[0]]['codigo_cliente'].unique())
+            for ind in base_op[1:]:
+                clientes_base &= set(df_analise[df_analise['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
+            clientes_comp = set(df_analise['codigo_cliente'].unique())
+            for ind in comp_op:
+                clientes_comp -= set(df_analise[df_analise['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
+            clientes_oportunidade = clientes_base.intersection(clientes_comp)
+
+            if clientes_oportunidade:
+                st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram da(s) indústria(s) selecionada(s) e não compraram da(s) indústria(s) comparada(s).")
+                df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
+                df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
+                st.dataframe(df_op, use_container_width=True, hide_index=True)
+
+                output_op = BytesIO()
+                with pd.ExcelWriter(output_op, engine='openpyxl') as writer:
+                    df_op.to_excel(writer, index=False, sheet_name='Oportunidades')
+                st.download_button("📥 Baixar Excel (Oportunidades)", data=output_op.getvalue(),
+                                   file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+            else:
+                st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
+    else:
+        st.info("Selecione ao menos uma indústria em cada lista para visualizar as oportunidades cruzadas.")
 
 # ============================================================
 # PÁGINA: SOFTYS FALCON
