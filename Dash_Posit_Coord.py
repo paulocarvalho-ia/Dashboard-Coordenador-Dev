@@ -519,7 +519,6 @@ if not df_softys.empty:
             ano_ref = df_softys['Ano'].max()
         mes_atual_num = int(mes_selecionado.split(' - ')[0])
 
-        # Meses da janela (apenas os 6 anteriores)
         months_window = []
         for i in range(1, janela_meses + 1):
             mes = mes_atual_num - i
@@ -529,9 +528,7 @@ if not df_softys.empty:
                 ano -= 1
             months_window.append(f"{ano}-{mes:02d}")
 
-        # Ordenar do mais antigo para o mais recente
         months_window = sorted(months_window)
-
         current_month_str = f"{ano_ref}-{mes_atual_num:02d}"
     else:
         months_window = sorted(df_softys['Mês_Ano'].unique())
@@ -542,11 +539,9 @@ if not df_softys.empty:
     # ---- GRÁFICO: Positivação mensal + YTD ----
     st.markdown("**Positivação Mensal e YTD (Softys Falcon)**")
 
-    # Totais mensais (clientes únicos)
     monthly_totals = df_softys_window.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
     monthly_totals.columns = ['Mês', 'Clientes']
 
-    # YTD (clientes únicos do ano até o mês atual)
     if mes_selecionado != "Todos":
         ano_ref_ytd = ano_ref
         mes_ytd = mes_atual_num
@@ -556,13 +551,12 @@ if not df_softys.empty:
     df_softys_ytd = df_softys[(df_softys['Ano'] == ano_ref_ytd) & (df_softys['Mês'] <= mes_ytd)]
     ytd_total = df_softys_ytd['codigo_cliente'].nunique()
 
-    # Adicionar YTD ao DataFrame do gráfico
+    # Montar DataFrame do gráfico sem append
     graph_df = monthly_totals.copy()
-    graph_df = graph_df.append({'Mês': 'YTD', 'Clientes': ytd_total}, ignore_index=True)
+    ytd_row = pd.DataFrame([{'Mês': 'YTD', 'Clientes': ytd_total}])
+    graph_df = pd.concat([graph_df, ytd_row], ignore_index=True)
 
-    # Criar gráfico com cores distintas para YTD
     fig_softys = go.Figure()
-    # Barras mensais
     mensal_df = graph_df[graph_df['Mês'] != 'YTD']
     fig_softys.add_trace(go.Bar(
         x=mensal_df['Mês'],
@@ -570,14 +564,13 @@ if not df_softys.empty:
         name='Mensal',
         marker_color='#2E8B57'
     ))
-    # Barra YTD
     ytd_df = graph_df[graph_df['Mês'] == 'YTD']
     if not ytd_df.empty:
         fig_softys.add_trace(go.Bar(
             x=ytd_df['Mês'],
             y=ytd_df['Clientes'],
             name='YTD',
-            marker_color='#1a3a4a'  # cor diferente
+            marker_color='#1a3a4a'
         ))
     fig_softys.update_layout(
         title='Positivação Softys Falcon (Mensal + YTD)',
@@ -590,7 +583,6 @@ if not df_softys.empty:
     # ---- TABELA MENSAL POR CATEGORIA (com YTD) ----
     st.markdown("**Positivação por Categoria (mês a mês + YTD)**")
 
-    # Pivot por categoria e mês
     pivot_mensal = df_softys_window.pivot_table(
         index='Categoria',
         columns='Mês_Ano',
@@ -598,25 +590,20 @@ if not df_softys.empty:
         aggfunc='nunique',
         fill_value=0
     )
-    # Ordenar colunas conforme months_window (do mais antigo para o mais recente)
     if months_window:
         pivot_mensal = pivot_mensal.reindex(columns=[c for c in months_window if c in pivot_mensal.columns], fill_value=0)
 
-    # YTD por categoria
     ytd_series = df_softys_ytd.groupby('Categoria')['codigo_cliente'].nunique()
-    # Juntar
     tabela_mensal = pivot_mensal.copy()
     tabela_mensal['YTD'] = ytd_series
     tabela_mensal = tabela_mensal.reset_index()
     tabela_mensal = tabela_mensal.fillna(0)
 
-    # Reordenar colunas: categoria, meses em ordem crescente, YTD por último
     ordered_cols = ['Categoria'] + [c for c in months_window if c in tabela_mensal.columns] + ['YTD']
     tabela_mensal = tabela_mensal[ordered_cols]
 
     st.dataframe(tabela_mensal, use_container_width=True, hide_index=True)
 
-    # Downloads da tabela mensal
     output_softys_mensal = BytesIO()
     with pd.ExcelWriter(output_softys_mensal, engine='openpyxl') as writer:
         tabela_mensal.to_excel(writer, index=False, sheet_name='Softys Mensal')
@@ -641,12 +628,10 @@ if not df_softys.empty:
                        mime='text/html', use_container_width=True)
     st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
 
-    # ---- BATALHA NAVAL: Clientes que compraram Softys Falcon ----
+    # ---- BATALHA NAVAL SOFTYS FALCON ----
     st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
 
-    # Preparar dados de clientes e categorias
     df_softys_clientes = df_softys[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
-    # Pivot: clientes x categorias (0/1)
     clientes_pivot = df_softys_clientes.pivot_table(
         index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
         columns='Categoria',
@@ -655,16 +640,13 @@ if not df_softys.empty:
         fill_value=0
     ).reset_index()
 
-    # Converter para 0/1
     cat_cols = [c for c in clientes_pivot.columns if c not in ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']]
     clientes_pivot[cat_cols] = (clientes_pivot[cat_cols] > 0).astype(int)
-    # Adicionar total de categorias
     clientes_pivot['Total'] = clientes_pivot[cat_cols].sum(axis=1)
 
     with st.expander("👁️ Visualizar Batalha Naval Softys Falcon"):
         st.dataframe(clientes_pivot, use_container_width=True, hide_index=True)
 
-    # Downloads da Batalha Naval
     output_softys_bn = BytesIO()
     with pd.ExcelWriter(output_softys_bn, engine='openpyxl') as writer:
         clientes_pivot.to_excel(writer, index=False, sheet_name='Batalha Naval Softys')
