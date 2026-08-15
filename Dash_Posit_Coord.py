@@ -109,7 +109,7 @@ def load_data():
     return df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta
 
 # ============================================================
-# BOTÃO ATUALIZAR (mantido no topo)
+# BOTÃO ATUALIZAR DADOS AGORA (no topo)
 # ============================================================
 if st.button("🔄 Atualizar Dados Agora"):
     st.cache_data.clear()
@@ -159,6 +159,42 @@ with st.expander("🎯 Filtros", expanded=True):
         ano_selecionado = st.selectbox("Ano", lista_anos, index=lista_anos.index(st.session_state['ano']), key='ano_top')
         st.session_state['ano'] = ano_selecionado
 
+    col5, col6, col7 = st.columns(3)
+    with col5:
+        # Coligação
+        if vendedor_selecionado != "Todos":
+            clientes_do_vendedor = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].unique()
+            coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_vendedor)]['Cliente_Coligacao'].dropna().unique()
+        elif coordenador_selecionado != "Todos":
+            vendedores_do_coord = df_base[df_base['Nome_Coordenador'] == coordenador_selecionado]['nome_vendedor_base'].unique()
+            clientes_do_coord = df_base[df_base['nome_vendedor_base'].isin(vendedores_do_coord)]['codigo_cliente'].unique()
+            coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_coord)]['Cliente_Coligacao'].dropna().unique()
+        else:
+            coligacoes_filtradas = df_base['Cliente_Coligacao'].dropna().unique()
+        lista_coligacoes = ["Todas"] + sorted(coligacoes_filtradas)
+        coligacao_selecionada = st.selectbox("Coligação", lista_coligacoes, key='colig_top')
+
+    with col6:
+        if pasta_selecionada in ["Todas", "PVA"]:
+            INDUSTRIAS_DISPONIVEIS = TODAS_INDUSTRIAS.copy()
+        else:
+            INDUSTRIAS_DISPONIVEIS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
+        industria_selecionada_lista = st.multiselect("Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, key='ind_top')
+
+    with col7:
+        categoria_selecionada = st.multiselect("Categoria(s)", options=sorted(df_bi['Categoria'].dropna().unique()), key='cat_top')
+        linha_selecionada = st.multiselect("Linha(s) de Produto", options=sorted(df_bi['Linha_Produto'].dropna().unique()), key='linha_top')
+
+    col8, col9, col10 = st.columns(3)
+    with col8:
+        municipio_selecionado = st.multiselect("Município(s)", options=sorted(df_base['Municipio'].dropna().unique()), key='muni_top')
+    with col9:
+        canal_selecionado = st.multiselect("Canal(is)", options=sorted(df_base['Canal'].dropna().unique()), key='canal_top')
+    with col10:
+        segmento_selecionado = st.multiselect("Segmento(s)", options=sorted(df_base['Segmento'].dropna().unique()), key='seg_top')
+
+    col11, col12, col13 = st.columns(3)
+    with col11:
         if ano_selecionado != "Todos":
             meses_disponiveis = sorted(df_merged[df_merged['Ano'] == int(ano_selecionado)]['Mês'].dropna().unique())
         else:
@@ -174,37 +210,15 @@ with st.expander("🎯 Filtros", expanded=True):
         mes_selecionado = st.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_top')
         st.session_state['mes'] = mes_selecionado
 
-    col5, col6, col7 = st.columns(3)
-    with col5:
-        janela_meses = st.slider("Janela da Base Ativa (meses)", 3, 6, 6, key='janela_top')
-    with col6:
-        if pasta_selecionada in ["Todas", "PVA"]:
-            INDUSTRIAS_DISPONIVEIS = TODAS_INDUSTRIAS.copy()
-        else:
-            INDUSTRIAS_DISPONIVEIS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
-        industria_selecionada_lista = st.multiselect("Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, key='ind_top')
-    with col7:
-        categoria_selecionada = st.multiselect("Categoria(s)", options=sorted(df_bi['Categoria'].dropna().unique()), key='cat_top')
-        linha_selecionada = st.multiselect("Linha(s) de Produto", options=sorted(df_bi['Linha_Produto'].dropna().unique()), key='linha_top')
-
-    # Filtros adicionais (município, canal, segmento)
-    col8, col9, col10 = st.columns(3)
-    with col8:
-        municipio_selecionado = st.multiselect("Município(s)", options=sorted(df_base['Municipio'].dropna().unique()), key='muni_top')
-    with col9:
-        canal_selecionado = st.multiselect("Canal(is)", options=sorted(df_base['Canal'].dropna().unique()), key='canal_top')
-    with col10:
-        segmento_selecionado = st.multiselect("Segmento(s)", options=sorted(df_base['Segmento'].dropna().unique()), key='seg_top')
-
-    # Metas
-    col11, col12 = st.columns(2)
-    with col11:
-        meta_ativa = st.number_input("Meta Base Ativa (%)", 0, 100, 70, key='meta_ativa_top')
     with col12:
+        janela_meses = st.slider("Janela da Base Ativa (meses)", 3, 6, 6, key='janela_top')
+
+    with col13:
+        meta_ativa = st.number_input("Meta Base Ativa (%)", 0, 100, 70, key='meta_ativa_top')
         meta_total = st.number_input("Meta Carteira Total (%)", 0, 100, 50, key='meta_total_top')
 
 # ============================================================
-# APLICAR FILTROS
+# APLICAR FILTROS COMUNS
 # ============================================================
 def aplicar_filtros_comuns(df, incluir_mes=True):
     df = df.copy()
@@ -243,7 +257,7 @@ df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
 df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
-# Janela móvel (para base ativa)
+# Janela móvel
 if mes_selecionado != "Todos":
     if ano_selecionado != "Todos":
         ano_ref = int(ano_selecionado)
@@ -291,42 +305,36 @@ if opcao == "🏠 Visão Geral":
     col_a2.metric("Positivados no Mês", positivados_periodo)
     col_a3.metric("% Positivação (Ativa)", f"{pct_ativa:.1f}%")
 
-    # Gráfico com YTD
+    # Gráfico mensal + YTD
     df_mensal_ativos = df_historico[df_historico['Nome_Fabricante'].notna()]
     mensal_pos = df_mensal_ativos.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
     mensal_pos.columns = ['Mês', 'Clientes Positivados']
 
-    # Calcular YTD acumulado (clientes únicos do ano até o mês atual)
     ano_atual = int(ano_selecionado) if ano_selecionado != "Todos" else df_historico['Ano'].max()
     mes_atual_num = int(mes_selecionado.split(' - ')[0]) if mes_selecionado != "Todos" else df_historico['Mês'].max()
     df_ytd = df_historico[(df_historico['Ano'] == ano_atual) & (df_historico['Mês'] <= mes_atual_num)]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
-    # Adicionar barra YTD
     ytd_row = pd.DataFrame([{'Mês': 'YTD', 'Clientes Positivados': ytd_total}])
     mensal_pos = pd.concat([mensal_pos, ytd_row], ignore_index=True)
 
-    # Ordenar meses
     meses_ordenados = sorted(df_historico['Mês_Ano'].dropna().unique()) + ['YTD']
     mensal_pos['Mês'] = pd.Categorical(mensal_pos['Mês'], categories=meses_ordenados, ordered=True)
     mensal_pos = mensal_pos.sort_values('Mês')
 
     fig_pos_mes = go.Figure()
-    # Barras mensais
     fig_pos_mes.add_trace(go.Bar(
         x=mensal_pos[mensal_pos['Mês'] != 'YTD']['Mês'],
         y=mensal_pos[mensal_pos['Mês'] != 'YTD']['Clientes Positivados'],
         name='Mensal',
         marker_color='#2E8B57'
     ))
-    # Barra YTD
-    if not mensal_pos[mensal_pos['Mês'] == 'YTD'].empty:
-        fig_pos_mes.add_trace(go.Bar(
-            x=['YTD'],
-            y=mensal_pos[mensal_pos['Mês'] == 'YTD']['Clientes Positivados'],
-            name='YTD',
-            marker_color='#1a3a4a'
-        ))
+    fig_pos_mes.add_trace(go.Bar(
+        x=['YTD'],
+        y=mensal_pos[mensal_pos['Mês'] == 'YTD']['Clientes Positivados'],
+        name='YTD',
+        marker_color='#1a3a4a'
+    ))
     fig_pos_mes.update_layout(xaxis_title="", yaxis_title="Clientes Positivados", barmode='group')
     st.plotly_chart(fig_pos_mes, use_container_width=True)
 
@@ -357,14 +365,10 @@ elif opcao == "🟢 Softys Falcon":
     if not df_softys.empty:
         st.subheader("🟢 Foco Estratégico: Softys Falcon")
 
-        # Determinar ano e meses
         ano_atual = int(ano_selecionado) if ano_selecionado != "Todos" else df_softys['Ano'].max()
         mes_atual_num = int(mes_selecionado.split(' - ')[0]) if mes_selecionado != "Todos" else df_softys['Mês'].max()
 
-        # Todos os meses do ano até o mês atual
         meses_ano = [f"{ano_atual}-{m:02d}" for m in range(1, mes_atual_num + 1)]
-
-        # Filtrar dados do ano
         df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['Mês'] <= mes_atual_num)]
 
         # Gráfico mensal + YTD
@@ -375,8 +379,6 @@ elif opcao == "🟢 Softys Falcon":
         ytd_total = df_softys_ano['codigo_cliente'].nunique()
 
         graph_df = pd.concat([monthly_totals, pd.DataFrame([{'Mês': 'YTD', 'Clientes': ytd_total}])], ignore_index=True)
-
-        # Garantir ordem
         category_order = meses_ano + ['YTD']
         graph_df['Mês'] = pd.Categorical(graph_df['Mês'], categories=category_order, ordered=True)
         graph_df = graph_df.sort_values('Mês')
@@ -405,7 +407,6 @@ elif opcao == "🟢 Softys Falcon":
         tabela['YTD'] = ytd_series
         tabela = tabela.reset_index().fillna(0)
 
-        # Ordenar colunas
         ordered_cols = ['Categoria'] + meses_ano + ['YTD']
         tabela = tabela[ordered_cols]
 
@@ -425,7 +426,7 @@ elif opcao == "🟢 Softys Falcon":
                            file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.html',
                            mime='text/html', use_container_width=True)
 
-        # Batalha Naval de categorias
+        # Batalha Naval
         st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
         df_softys_clientes = df_softys_ano[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
         clientes_pivot = df_softys_clientes.pivot_table(index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
@@ -539,7 +540,6 @@ elif opcao == "🟤 Cenoura & Bronze":
     if not df_cenoura.empty:
         st.subheader("🟤 Foco Estratégico: Linha Cenoura & Bronze")
 
-        # Determinar período
         if mes_selecionado != "Todos":
             ano_atual = int(ano_selecionado) if ano_selecionado != "Todos" else df_cenoura['Ano'].max()
             mes_atual_num = int(mes_selecionado.split(' - ')[0])
@@ -571,7 +571,6 @@ elif opcao == "🟤 Cenoura & Bronze":
 
         st.dataframe(df_cen_vend, use_container_width=True, hide_index=True)
 
-        # Clientes ausentes
         st.markdown("**Clientes atendidos nos 6 meses, mas não no mês atual**")
         clientes_janela = df_cenoura_window['codigo_cliente'].unique()
         clientes_mes = df_cenoura_mes['codigo_cliente'].unique() if not df_cenoura_mes.empty else []
