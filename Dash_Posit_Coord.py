@@ -238,7 +238,7 @@ df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
 df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
-# Janela móvel
+# Janela móvel (base ativa)
 if mes_selecionado != "Todos":
     mes_num = int(mes_selecionado.split(' - ')[0])
     anos_do_mes = df_historico[df_historico['Mês'] == mes_num]['Ano'].unique()
@@ -310,26 +310,31 @@ if opcao == "🏠 Visão Geral":
     df_ytd = df_historico[(df_historico['Ano'] == ano_ytd) & (df_historico['Mês'] <= mes_num)]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
-    graph_data = mensal_pos.copy()
-    graph_data = pd.concat([graph_data, pd.DataFrame([{'Mês': 'YTD', 'Clientes Positivados': ytd_total}])], ignore_index=True)
-    graph_data['Tipo'] = np.where(graph_data['Mês'] == 'YTD', 'YTD', 'Mensal')
-
-    # Ordenar
-    categorias_ordenadas = sorted(mensal_pos['Mês'].unique()) + ['YTD']
-    graph_data['Mês'] = pd.Categorical(graph_data['Mês'], categories=categorias_ordenadas, ordered=True)
-    graph_data = graph_data.sort_values('Mês')
-
-    fig_pos_mes = px.bar(
-        graph_data,
-        x='Mês',
-        y='Clientes Positivados',
-        color='Tipo',
-        color_discrete_map={'Mensal': '#2E8B57', 'YTD': '#1a3a4a'},
-        text='Clientes Positivados',
-        title='Positivação Carteira Ativa (Mensal + YTD)'
+    fig_pos_mes = go.Figure()
+    # Barras mensais
+    fig_pos_mes.add_trace(go.Bar(
+        x=mensal_pos['Mês'],
+        y=mensal_pos['Clientes Positivados'],
+        name='Mensal',
+        marker_color='#2E8B57',
+        text=mensal_pos['Clientes Positivados'],
+        textposition='outside'
+    ))
+    # Barra YTD
+    fig_pos_mes.add_trace(go.Bar(
+        x=['YTD'],
+        y=[ytd_total],
+        name='YTD',
+        marker_color='#1a3a4a',
+        text=[ytd_total],
+        textposition='outside'
+    ))
+    fig_pos_mes.update_layout(
+        title='Positivação Carteira Ativa (Mensal + YTD)',
+        xaxis_title='',
+        yaxis_title='Clientes Positivados',
+        barmode='group'
     )
-    fig_pos_mes.update_traces(textposition='outside')
-    fig_pos_mes.update_layout(barmode='group', uniformtext_minsize=8)
     st.plotly_chart(fig_pos_mes, use_container_width=True)
 
     # Carteira Total
@@ -524,35 +529,37 @@ elif opcao == "🟢 Softys Falcon":
         meses_ano = [f"{ano_atual}-{m:02d}" for m in range(1, mes_atual_num + 1)]
         df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['Mês'] <= mes_atual_num)]
 
-        # === Gráfico mensal + YTD ===
+        # Gráfico mensal + YTD
         monthly_totals = df_softys_ano.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
         monthly_totals.columns = ['Mês', 'Clientes']
         monthly_totals = monthly_totals[monthly_totals['Mês'].isin(meses_ano)]
 
         ytd_total = df_softys_ano['codigo_cliente'].nunique()
 
-        graph_softys = monthly_totals.copy()
-        graph_softys = pd.concat([graph_softys, pd.DataFrame([{'Mês': 'YTD', 'Clientes': ytd_total}])], ignore_index=True)
-        graph_softys['Tipo'] = np.where(graph_softys['Mês'] == 'YTD', 'YTD', 'Mensal')
-
-        categorias_softys = sorted(monthly_totals['Mês'].unique()) + ['YTD']
-        graph_softys['Mês'] = pd.Categorical(graph_softys['Mês'], categories=categorias_softys, ordered=True)
-        graph_softys = graph_softys.sort_values('Mês')
-
-        fig_softys = px.bar(
-            graph_softys,
-            x='Mês',
-            y='Clientes',
-            color='Tipo',
-            color_discrete_map={'Mensal': '#2E8B57', 'YTD': '#1a3a4a'},
-            text='Clientes',
-            title='Positivação Softys Falcon (Mensal + YTD)'
+        fig_softys = go.Figure()
+        fig_softys.add_trace(go.Bar(
+            x=monthly_totals['Mês'],
+            y=monthly_totals['Clientes'],
+            name='Mensal',
+            marker_color='#2E8B57',
+            text=monthly_totals['Clientes'],
+            textposition='outside'
+        ))
+        fig_softys.add_trace(go.Bar(
+            x=['YTD'],
+            y=[ytd_total],
+            name='YTD',
+            marker_color='#1a3a4a',
+            text=[ytd_total],
+            textposition='outside'
+        ))
+        fig_softys.update_layout(
+            title='Positivação Softys Falcon (Mensal + YTD)',
+            barmode='group'
         )
-        fig_softys.update_traces(textposition='outside')
-        fig_softys.update_layout(barmode='group', uniformtext_minsize=8)
         st.plotly_chart(fig_softys, use_container_width=True)
 
-        # === Tabela mensal por categoria + YTD ===
+        # Tabela mensal por categoria + YTD
         pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='Mês_Ano', values='codigo_cliente', aggfunc='nunique', fill_value=0)
         pivot_mensal = pivot_mensal.reindex(columns=meses_ano, fill_value=0)
         ytd_series = df_softys_ano.groupby('Categoria')['codigo_cliente'].nunique()
@@ -579,7 +586,7 @@ elif opcao == "🟢 Softys Falcon":
                            file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.html',
                            mime='text/html', use_container_width=True)
 
-        # === Batalha Naval Softys Falcon ===
+        # Batalha Naval Softys Falcon
         st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
         df_softys_clientes = df_softys_ano[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
         clientes_pivot = df_softys_clientes.pivot_table(index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
