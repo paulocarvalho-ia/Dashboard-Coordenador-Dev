@@ -43,10 +43,9 @@ def load_data():
 
     data_dados = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    # Normalizar nomes de colunas da BASE (remover espaços extras)
+    # Normalizar nomes de colunas da BASE
     df_base.columns = [str(col).strip() for col in df_base.columns]
 
-    # Renomear colunas da BASE (produção já está com nomes novos)
     df_base = df_base.rename(columns={
         'Código Cliente': 'codigo_cliente',
         'Cliente': 'nome_cliente',
@@ -58,10 +57,9 @@ def load_data():
         'Segmento': 'Segmento'
     })
 
-    # Normalizar nomes de colunas da BI_Teste (minúsculas e sem espaços extras)
+    # Normalizar nomes de colunas da BI_Teste
     df_bi.columns = [str(col).strip().lower() for col in df_bi.columns]
 
-    # Criar dicionário de renomeação dinâmico baseado em palavras-chave
     bi_rename = {}
     for col in df_bi.columns:
         if 'código cliente' in col or 'codigo cliente' in col:
@@ -108,7 +106,6 @@ def load_data():
 
     df_merged['nome_vendedor'] = df_merged['nome_vendedor_bi']
 
-    # Dicionários de pastas
     fabricante_pasta = dict(zip(df_fabricantes['Nome Fabricante'], df_fabricantes['Pasta']))
     vendedor_pasta = dict(zip(df_vendedores['Vendedor'], df_vendedores['Pasta']))
 
@@ -125,19 +122,14 @@ if st.sidebar.button("🔄 Atualizar Dados Agora"):
 
 df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta = load_data()
 
-# ============================================================
-# LISTA DE INDÚSTRIAS COMPLETA
-# ============================================================
 TODAS_INDUSTRIAS = sorted(df_bi['Nome_Fabricante'].dropna().unique())
 TODAS_INDUSTRIAS = [i for i in TODAS_INDUSTRIAS if i.strip() != '']
-TOTAL_INDUSTRIAS_GERAL = len(TODAS_INDUSTRIAS)
 
 # ============================================================
 # FILTROS
 # ============================================================
 st.sidebar.header("🎯 Filtros")
 
-# Limpar filtros
 st.sidebar.markdown(
     """
     <form action="" method="get" style="margin-bottom: 10px;">
@@ -157,39 +149,36 @@ if not st.query_params:
                 'municipio_filtro', 'canal_filtro', 'segmento_filtro', 'categoria_filtro', 'linha_filtro']:
         st.session_state.pop(key, None)
 
-# -------------------- FILTRO DE PASTA --------------------
+# Pasta
 lista_pastas = ["Todas", "PA", "PV", "PVA"]
 if 'pasta' not in st.session_state: st.session_state['pasta'] = 'Todas'
 pasta_selecionada = st.sidebar.selectbox("Pasta", lista_pastas, index=lista_pastas.index(st.session_state['pasta']) if st.session_state['pasta'] in lista_pastas else 0, key='pasta_select')
 st.session_state['pasta'] = pasta_selecionada
 
-# Definição das indústrias permitidas (PVA e Todas exibem todas)
 if pasta_selecionada in ["Todas", "PVA"]:
     INDUSTRIAS_PERMITIDAS = TODAS_INDUSTRIAS.copy()
 else:
     INDUSTRIAS_PERMITIDAS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
 
-# -------------------- COORDENADOR --------------------
+# Coordenador
 lista_coordenadores = ["Todos"] + sorted(df_base['Nome_Coordenador'].dropna().unique().tolist())
 if 'coordenador' not in st.session_state: st.session_state['coordenador'] = 'Todos'
 coordenador_selecionado = st.sidebar.selectbox("Coordenador", lista_coordenadores, index=lista_coordenadores.index(st.session_state['coordenador']), key='coordenador_select')
 st.session_state['coordenador'] = coordenador_selecionado
 
-# -------------------- VENDEDOR --------------------
+# Vendedor
 if coordenador_selecionado != "Todos":
     vendedores_base = df_base[df_base['Nome_Coordenador'] == coordenador_selecionado]['nome_vendedor_base'].dropna().unique()
 else:
     vendedores_base = df_base['nome_vendedor_base'].dropna().unique()
-
 if pasta_selecionada != "Todas":
     vendedores_base = [v for v in vendedores_base if vendedor_pasta.get(v) == pasta_selecionada]
-
 lista_vendedores = ["Todos"] + sorted(vendedores_base)
 if 'vendedor' not in st.session_state: st.session_state['vendedor'] = 'Todos'
 vendedor_selecionado = st.sidebar.selectbox("Vendedor", lista_vendedores, index=lista_vendedores.index(st.session_state['vendedor']), key='vendedor_select')
 st.session_state['vendedor'] = vendedor_selecionado
 
-# -------------------- COLIGAÇÃO --------------------
+# Coligação
 if vendedor_selecionado != "Todos":
     clientes_do_vendedor = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].unique()
     coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_vendedor)]['Cliente_Coligacao'].dropna().unique()
@@ -199,13 +188,12 @@ elif coordenador_selecionado != "Todos":
     coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_coord)]['Cliente_Coligacao'].dropna().unique()
 else:
     coligacoes_filtradas = df_base['Cliente_Coligacao'].dropna().unique()
-
 lista_coligacoes = ["Todas"] + sorted(coligacoes_filtradas)
 if 'coligacao' not in st.session_state: st.session_state['coligacao'] = 'Todas'
 coligacao_selecionada = st.sidebar.selectbox("Coligação", lista_coligacoes, index=lista_coligacoes.index(st.session_state['coligacao']), key='coligacao_select')
 st.session_state['coligacao'] = coligacao_selecionada
 
-# -------------------- MUNICÍPIO, CANAL, SEGMENTO --------------------
+# Município, Canal, Segmento
 if 'municipio_filtro' not in st.session_state: st.session_state['municipio_filtro'] = []
 municipio_opcoes = sorted(df_base['Municipio'].dropna().unique())
 municipio_selecionado = st.sidebar.multiselect("Município(s)", options=municipio_opcoes, default=st.session_state['municipio_filtro'], placeholder="Selecione...")
@@ -221,7 +209,7 @@ segmento_opcoes = sorted(df_base['Segmento'].dropna().unique())
 segmento_selecionado = st.sidebar.multiselect("Segmento(s)", options=segmento_opcoes, default=st.session_state['segmento_filtro'], placeholder="Selecione...")
 st.session_state['segmento_filtro'] = segmento_selecionado
 
-# -------------------- ANO --------------------
+# Ano e Mês
 anos_disponiveis = sorted(df_merged['Ano'].dropna().unique())
 lista_anos = ["Todos"] + [str(int(a)) for a in anos_disponiveis]
 if 'ano' not in st.session_state:
@@ -230,7 +218,6 @@ if st.session_state['ano'] not in lista_anos: st.session_state['ano'] = 'Todos'
 ano_selecionado = st.sidebar.selectbox("Ano", lista_anos, index=lista_anos.index(st.session_state['ano']), key='ano_select')
 st.session_state['ano'] = ano_selecionado
 
-# -------------------- MÊS --------------------
 if ano_selecionado != "Todos":
     meses_disponiveis = sorted(df_merged[df_merged['Ano'] == int(ano_selecionado)]['Mês'].dropna().unique())
 else:
@@ -247,7 +234,7 @@ if st.session_state['mes'] not in lista_meses: st.session_state['mes'] = 'Todos'
 mes_selecionado = st.sidebar.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_select')
 st.session_state['mes'] = mes_selecionado
 
-# -------------------- JANELA MÓVEL --------------------
+# Janela móvel
 st.sidebar.divider()
 st.sidebar.header("📆 Janela da Base Ativa")
 if 'janela_meses' not in st.session_state:
@@ -255,7 +242,7 @@ if 'janela_meses' not in st.session_state:
 janela_meses = st.sidebar.slider("Nº de meses anteriores", min_value=3, max_value=6, value=st.session_state['janela_meses'], step=1, key='janela_slider')
 st.session_state['janela_meses'] = janela_meses
 
-# -------------------- INDÚSTRIA --------------------
+# Indústria, Categoria, Linha
 st.sidebar.divider()
 st.sidebar.header("🏭 Filtro por Indústria")
 if pasta_selecionada in ["Todas", "PVA"]:
@@ -266,19 +253,17 @@ if 'industria_filtro' not in st.session_state: st.session_state['industria_filtr
 industria_selecionada_lista = st.sidebar.multiselect("Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, default=st.session_state['industria_filtro'], placeholder="Digite para buscar...", key='industria_multiselect')
 st.session_state['industria_filtro'] = industria_selecionada_lista
 
-# -------------------- CATEGORIA (NOVO) --------------------
 if 'categoria_filtro' not in st.session_state: st.session_state['categoria_filtro'] = []
 categoria_opcoes = sorted(df_bi['Categoria'].dropna().unique())
 categoria_selecionada = st.sidebar.multiselect("Categoria(s)", options=categoria_opcoes, default=st.session_state['categoria_filtro'], placeholder="Selecione...")
 st.session_state['categoria_filtro'] = categoria_selecionada
 
-# -------------------- LINHA DE PRODUTO (NOVO) --------------------
 if 'linha_filtro' not in st.session_state: st.session_state['linha_filtro'] = []
 linha_opcoes = sorted(df_bi['Linha_Produto'].dropna().unique())
 linha_selecionada = st.sidebar.multiselect("Linha(s) de Produto", options=linha_opcoes, default=st.session_state['linha_filtro'], placeholder="Selecione...")
 st.session_state['linha_filtro'] = linha_selecionada
 
-# -------------------- METAS --------------------
+# Metas
 st.sidebar.divider()
 st.sidebar.header("🎯 Metas")
 if 'meta_ativa' not in st.session_state: st.session_state['meta_ativa'] = 70
@@ -330,9 +315,7 @@ df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
 df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 
-# ============================================================
-# APLICAR JANELA MÓVEL (BASE ATIVA)
-# ============================================================
+# Aplicar janela móvel
 if mes_selecionado != "Todos":
     if ano_selecionado != "Todos":
         ano_ref = int(ano_selecionado)
@@ -451,7 +434,7 @@ if clientes_sem_venda_carteira:
 st.divider()
 
 # ============================================================
-# PERFORMANCE POR VENDEDOR (COM GRÁFICOS EMPILHADOS)
+# PERFORMANCE POR VENDEDOR
 # ============================================================
 st.subheader("👥 Performance por Vendedor")
 
@@ -538,46 +521,108 @@ st.subheader("🟢 Foco Estratégico: Softys Falcon")
 df_softys = df_relatorio_base[df_relatorio_base['Nome_Fabricante'] == 'SOFTYS FALCON'].copy()
 
 if not df_softys.empty:
-    clientes_softys = df_softys['codigo_cliente'].nunique()
-    st.metric("Clientes que compraram Softys Falcon", clientes_softys)
+    st.markdown("**Positivação por Categoria (mês a mês + YTD)**")
 
-    st.markdown("**Positivação por Categoria (Softys Falcon)**")
-    df_softys_cat = df_softys.groupby('Categoria')['codigo_cliente'].nunique().reset_index()
-    df_softys_cat.columns = ['Categoria', 'Clientes Positivados']
-    st.dataframe(df_softys_cat, use_container_width=True, hide_index=True)
-
-    st.markdown("**Batalha Naval Softys Falcon (clientes x categorias)**")
-    matriz_softys = df_softys.pivot_table(index='codigo_cliente', columns='Categoria', aggfunc='size', fill_value=0)
-    mapa_nomes_softys = df_softys[['codigo_cliente', 'nome_cliente']].drop_duplicates('codigo_cliente')
-    mapa_nomes_dict_softys = dict(zip(mapa_nomes_softys['codigo_cliente'], mapa_nomes_softys['nome_cliente']))
-    matriz_softys.index = matriz_softys.index.map(lambda x: f"{x} - {mapa_nomes_dict_softys.get(x, 'N/A')}")
-    matriz_softys_bin = (matriz_softys > 0).astype(int)
-
-    if not matriz_softys_bin.empty:
-        fig_softys = go.Figure(data=go.Heatmap(
-            z=matriz_softys_bin.values,
-            x=matriz_softys_bin.columns.tolist(),
-            y=matriz_softys_bin.index.tolist(),
-            colorscale=[[0, '#8B0000'], [1, '#0F5220']],
-            showscale=False,
-            hoverongaps=False
-        ))
-        fig_softys.update_layout(
-            height=max(300, 20 * len(matriz_softys_bin)),
-            xaxis_title="Categoria",
-            yaxis_title="Cliente",
-            xaxis_tickangle=-45
-        )
-        st.plotly_chart(fig_softys, use_container_width=True)
+    # Tabela mensal por categoria
+    if mes_selecionado != "Todos":
+        # usamos a janela móvel, mas queremos mês a mês da janela; considerar todos os meses do ano ou apenas janela?
+        # Ajuste: se o filtro lateral de mês estiver definido, mostrar os meses da janela (6 meses) e YTD.
+        # Vamos pegar os meses da janela (que já estão em meses_janela).
+        months_in_window = [f"{a}-{m:02d}" for a, m in meses_janela]
     else:
-        st.info("Sem dados para Batalha Naval Softys Falcon.")
+        months_in_window = sorted(df_softys['Mês_Ano'].unique())
 
-    output_softys = BytesIO()
-    with pd.ExcelWriter(output_softys, engine='openpyxl') as writer:
-        matriz_softys_bin.to_excel(writer, sheet_name='Batalha Naval Softys')
-    st.download_button("📥 Baixar Excel (Batalha Naval Softys)", data=output_softys.getvalue(),
-                       file_name=f'batalha_naval_softys_{datetime.now().strftime("%Y%m%d")}.xlsx',
+    df_softys_window = df_softys[df_softys['Mês_Ano'].isin(months_in_window)].copy()
+
+    # Pivot mensal
+    pivot_mensal = df_softys_window.pivot_table(index='Categoria', columns='Mês_Ano', aggfunc='size', fill_value=0)
+    # Reordenar colunas conforme a sequência dos meses
+    if months_in_window:
+        pivot_mensal = pivot_mensal.reindex(columns=[c for c in months_in_window if c in pivot_mensal.columns], fill_value=0)
+
+    # YTD: acumulado do ano até o mês atual
+    if mes_selecionado != "Todos":
+        ano_ref = int(ano_selecionado) if ano_selecionado != "Todos" else df_softys['Ano'].max()
+        mes_atual_num = int(mes_selecionado.split(' - ')[0])
+        df_softys_ytd = df_softys[(df_softys['Ano'] == ano_ref) & (df_softys['Mês'] <= mes_atual_num)]
+    else:
+        df_softys_ytd = df_softys
+    ytd_series = df_softys_ytd.groupby('Categoria')['codigo_cliente'].nunique()
+
+    # Montar tabela final
+    tabela_mensal = pivot_mensal.copy()
+    tabela_mensal['YTD'] = ytd_series
+    tabela_mensal = tabela_mensal.reset_index()
+    tabela_mensal.columns = ['Categoria'] + [c for c in tabela_mensal.columns if c != 'Categoria']
+
+    st.dataframe(tabela_mensal, use_container_width=True, hide_index=True)
+
+    # Downloads Excel e PDF da tabela mensal
+    output_softys_mensal = BytesIO()
+    with pd.ExcelWriter(output_softys_mensal, engine='openpyxl') as writer:
+        tabela_mensal.to_excel(writer, index=False, sheet_name='Softys Mensal')
+    st.download_button("📥 Baixar Excel (Mensal)", data=output_softys_mensal.getvalue(),
+                       file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.xlsx',
                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+
+    html_softys_mensal = f"""
+    <html><head><meta charset="UTF-8"><style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1 {{ font-size: 16px; }}
+        table {{ border-collapse: collapse; width: 100%; font-size: 10px; }}
+        th {{ background-color: #1a3a4a; color: white; padding: 5px; }}
+        td {{ padding: 4px; border: 1px solid #ddd; }}
+    </style></head><body>
+        <h1>Positivação Softys Falcon - mês a mês + YTD</h1>
+        {tabela_mensal.to_html(index=False)}
+    </body></html>
+    """
+    st.download_button("📥 Baixar PDF (Mensal)", data=html_softys_mensal.encode('utf-8'),
+                       file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.html',
+                       mime='text/html', use_container_width=True)
+    st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
+
+    # Lista de clientes com colunas solicitadas e categorias
+    st.markdown("**Clientes Softys Falcon**")
+    df_softys_clientes = df_softys[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
+    # Pivot para mostrar categorias como colunas (0/1)
+    clientes_pivot = df_softys_clientes.pivot_table(index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
+                                                    columns='Categoria', aggfunc='size', fill_value=0).reset_index()
+    # Converter para binário? O aggfunc size já dá contagem, mas como podem haver duplicatas, vamos usar >0
+    cat_cols = [c for c in clientes_pivot.columns if c not in ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']]
+    clientes_pivot[cat_cols] = (clientes_pivot[cat_cols] > 0).astype(int)
+    # Adicionar coluna total
+    clientes_pivot['Total'] = clientes_pivot[cat_cols].sum(axis=1)
+
+    with st.expander("👁️ Ver lista de clientes"):
+        st.dataframe(clientes_pivot, use_container_width=True, hide_index=True)
+
+    # Download Excel clientes
+    output_softys_clientes = BytesIO()
+    with pd.ExcelWriter(output_softys_clientes, engine='openpyxl') as writer:
+        clientes_pivot.to_excel(writer, index=False, sheet_name='Clientes Softys')
+    st.download_button("📥 Baixar Excel (Clientes)", data=output_softys_clientes.getvalue(),
+                       file_name=f'softys_clientes_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+
+    # PDF de clientes
+    html_softys_clientes = f"""
+    <html><head><meta charset="UTF-8"><style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1 {{ font-size: 16px; }}
+        table {{ border-collapse: collapse; width: 100%; font-size: 10px; }}
+        th {{ background-color: #1a3a4a; color: white; padding: 5px; }}
+        td {{ padding: 4px; border: 1px solid #ddd; }}
+    </style></head><body>
+        <h1>Clientes Softys Falcon</h1>
+        {clientes_pivot.to_html(index=False)}
+    </body></html>
+    """
+    st.download_button("📥 Baixar PDF (Clientes)", data=html_softys_clientes.encode('utf-8'),
+                       file_name=f'softys_clientes_{datetime.now().strftime("%Y%m%d")}.html',
+                       mime='text/html', use_container_width=True)
+    st.caption("💡 Abra o HTML e salve como PDF (Ctrl+P)")
+
 else:
     st.warning("Nenhum dado da Softys Falcon para os filtros atuais.")
 
@@ -586,89 +631,94 @@ st.divider()
 # ---------- 2. KENVUE (CANAL PERFUMARIA) ----------
 st.subheader("🟠 Foco Estratégico: Kenvue no Canal Perfumaria")
 
-df_kenvue = df_relatorio_base[
-    (df_relatorio_base['Nome_Fabricante'] == 'KENVUE') &
-    (df_relatorio_base['Canal'] == 'PERFUMARIA')
-].copy()
+# Perfumarias ativas na janela móvel
+df_perfumarias_ativas = df_historico_janela[df_historico_janela['Canal'] == 'PERFUMARIA'].copy()
 
-if not df_kenvue.empty:
-    clientes_kenvue = df_kenvue['codigo_cliente'].unique()
-    total_perfumarias = df_base[df_base['Canal'] == 'PERFUMARIA']['codigo_cliente'].nunique()
-    atendidos = len(clientes_kenvue)
-    pct_atendido = (atendidos / total_perfumarias * 100) if total_perfumarias > 0 else 0
+if not df_perfumarias_ativas.empty:
+    # Kenvue no mês atual (mês selecionado)
+    df_kenvue_mes = df_filtrado[(df_filtrado['Nome_Fabricante'] == 'KENVUE') & (df_filtrado['Canal'] == 'PERFUMARIA')].copy()
 
-    st.metric("Perfumarias Atendidas (Kenvue)", f"{atendidos} de {total_perfumarias} ({pct_atendido:.1f}%)")
-    st.progress(min(pct_atendido / 100, 1.0), text="Meta: 50%")
+    if not df_kenvue_mes.empty:
+        clientes_kenvue_mes = df_kenvue_mes['codigo_cliente'].unique()
+        total_perfumarias_ativas = df_perfumarias_ativas['codigo_cliente'].nunique()
+        atendidos = len(clientes_kenvue_mes)
+        pct_atendido = (atendidos / total_perfumarias_ativas * 100) if total_perfumarias_ativas > 0 else 0
 
-    st.markdown("**Onde chegamos / Onde não chegamos (Perfumarias)**")
-    df_perfumarias = df_base[df_base['Canal'] == 'PERFUMARIA'].copy()
-    if coordenador_selecionado != "Todos":
-        df_perfumarias = df_perfumarias[df_perfumarias['Nome_Coordenador'] == coordenador_selecionado]
-    if vendedor_selecionado != "Todos":
-        df_perfumarias = df_perfumarias[df_perfumarias['nome_vendedor_base'] == vendedor_selecionado]
-    if pasta_selecionada != "Todas":
-        vendedores_pasta_perf = [v for v in df_perfumarias['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
-        df_perfumarias = df_perfumarias[df_perfumarias['nome_vendedor_base'].isin(vendedores_pasta_perf)]
-    if municipio_selecionado:
-        df_perfumarias = df_perfumarias[df_perfumarias['Municipio'].isin(municipio_selecionado)]
-    if segmento_selecionado:
-        df_perfumarias = df_perfumarias[df_perfumarias['Segmento'].isin(segmento_selecionado)]
+        st.metric("Perfumarias Ativas (janela móvel)", total_perfumarias_ativas)
+        st.metric("Atendidas com Kenvue (mês atual)", f"{atendidos} ({pct_atendido:.1f}%)")
+        st.progress(min(pct_atendido / 100, 1.0), text="Meta: 50%")
 
-    total_perfumarias_filtradas = df_perfumarias['codigo_cliente'].nunique()
-    clientes_nao_atendidos = [c for c in df_perfumarias['codigo_cliente'].unique() if c not in clientes_kenvue]
+        st.markdown("**Onde chegamos / Onde não chegamos (Perfumarias ativas)**")
 
-    col_ken1, col_ken2 = st.columns(2)
-    with col_ken1:
-        st.markdown(f"✅ **Onde chegamos** ({len(clientes_kenvue)})")
-        df_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_kenvue)][['codigo_cliente', 'nome_cliente', 'nome_vendedor_base']]
-        df_chegamos.columns = ['Código', 'Cliente', 'Vendedor']
-        st.dataframe(df_chegamos, use_container_width=True, hide_index=True)
+        clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique() if c not in clientes_kenvue_mes]
 
-        output_ken_cheg = BytesIO()
-        with pd.ExcelWriter(output_ken_cheg, engine='openpyxl') as writer:
-            df_chegamos.to_excel(writer, index=False, sheet_name='Chegamos')
-        st.download_button("📥 Baixar Excel (Chegamos)", data=output_ken_cheg.getvalue(),
-                           file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
+        col_ken1, col_ken2 = st.columns(2)
+        with col_ken1:
+            st.markdown(f"✅ **Chegamos** ({atendidos})")
+            df_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_kenvue_mes)][['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']]
+            df_chegamos.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
+            st.dataframe(df_chegamos, use_container_width=True, hide_index=True)
+
+            output_ken_cheg = BytesIO()
+            with pd.ExcelWriter(output_ken_cheg, engine='openpyxl') as writer:
+                df_chegamos.to_excel(writer, index=False, sheet_name='Chegamos')
+            st.download_button("📥 Baixar Excel (Chegamos)", data=output_ken_cheg.getvalue(),
+                               file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+            html_ken_cheg = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Kenvue - Chegamos</h1>{df_chegamos.to_html(index=False)}</body></html>"""
+            st.download_button("📥 Baixar PDF (Chegamos)", data=html_ken_cheg.encode('utf-8'),
+                               file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.html',
+                               mime='text/html', use_container_width=True)
+
+        with col_ken2:
+            st.markdown(f"❌ **Não chegamos** ({len(clientes_nao_atendidos)})")
+            df_nao_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_nao_atendidos)][['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']]
+            df_nao_chegamos.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
+            st.dataframe(df_nao_chegamos, use_container_width=True, hide_index=True)
+
+            output_ken_nao = BytesIO()
+            with pd.ExcelWriter(output_ken_nao, engine='openpyxl') as writer:
+                df_nao_chegamos.to_excel(writer, index=False, sheet_name='Nao Chegamos')
+            st.download_button("📥 Baixar Excel (Não Chegamos)", data=output_ken_nao.getvalue(),
+                               file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+            html_ken_nao = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Kenvue - Não Chegamos</h1>{df_nao_chegamos.to_html(index=False)}</body></html>"""
+            st.download_button("📥 Baixar PDF (Não Chegamos)", data=html_ken_nao.encode('utf-8'),
+                               file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.html',
+                               mime='text/html', use_container_width=True)
+
+        # Quadro por vendedor
+        st.markdown("**Meta por Vendedor (50% das perfumarias ativas)**")
+        vendedores_perf = df_perfumarias_ativas['nome_vendedor_base'].dropna().unique()
+        lista_kenvue_vend = []
+        for vend in vendedores_perf:
+            total_vend = df_perfumarias_ativas[df_perfumarias_ativas['nome_vendedor_base'] == vend]['codigo_cliente'].nunique()
+            atend_vend = df_kenvue_mes[df_kenvue_mes['nome_vendedor'] == vend]['codigo_cliente'].nunique()
+            pct_vend = (atend_vend / total_vend * 100) if total_vend > 0 else 0
+            lista_kenvue_vend.append({
+                'Vendedor': vend,
+                'Perfumarias Ativas': total_vend,
+                'Atendidas Kenvue': atend_vend,
+                '% Atendido': round(pct_vend, 1)
+            })
+        df_kenvue_vend = pd.DataFrame(lista_kenvue_vend)
+        st.dataframe(df_kenvue_vend, use_container_width=True, hide_index=True)
+
+        output_ken_vend = BytesIO()
+        with pd.ExcelWriter(output_ken_vend, engine='openpyxl') as writer:
+            df_kenvue_vend.to_excel(writer, index=False, sheet_name='Meta Kenvue Vendedor')
+        st.download_button("📥 Baixar Excel (Meta por Vendedor)", data=output_ken_vend.getvalue(),
+                           file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.xlsx',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
 
-    with col_ken2:
-        st.markdown(f"❌ **Onde não chegamos** ({len(clientes_nao_atendidos)})")
-        df_nao_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_nao_atendidos)][['codigo_cliente', 'nome_cliente', 'nome_vendedor_base']]
-        df_nao_chegamos.columns = ['Código', 'Cliente', 'Vendedor']
-        st.dataframe(df_nao_chegamos, use_container_width=True, hide_index=True)
-
-        output_ken_nao = BytesIO()
-        with pd.ExcelWriter(output_ken_nao, engine='openpyxl') as writer:
-            df_nao_chegamos.to_excel(writer, index=False, sheet_name='Nao Chegamos')
-        st.download_button("📥 Baixar Excel (Não Chegamos)", data=output_ken_nao.getvalue(),
-                           file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
-
-    st.markdown("**Meta por Vendedor (50% das perfumarias ativas)**")
-    vendedores_perf = df_perfumarias['nome_vendedor_base'].dropna().unique()
-    lista_kenvue_vend = []
-    for vend in vendedores_perf:
-        total_vend = df_perfumarias[df_perfumarias['nome_vendedor_base'] == vend]['codigo_cliente'].nunique()
-        atend_vend = df_kenvue[df_kenvue['nome_vendedor'] == vend]['codigo_cliente'].nunique()
-        pct_vend = (atend_vend / total_vend * 100) if total_vend > 0 else 0
-        lista_kenvue_vend.append({
-            'Vendedor': vend,
-            'Total Perfumarias': total_vend,
-            'Atendidas': atend_vend,
-            '% Atendido': round(pct_vend, 1)
-        })
-    df_kenvue_vend = pd.DataFrame(lista_kenvue_vend)
-    st.dataframe(df_kenvue_vend, use_container_width=True, hide_index=True)
-
-    output_ken_vend = BytesIO()
-    with pd.ExcelWriter(output_ken_vend, engine='openpyxl') as writer:
-        df_kenvue_vend.to_excel(writer, index=False, sheet_name='Meta Kenvue Vendedor')
-    st.download_button("📥 Baixar Excel (Meta por Vendedor)", data=output_ken_vend.getvalue(),
-                       file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
-
+        html_ken_vend = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Meta Kenvue por Vendedor</h1>{df_kenvue_vend.to_html(index=False)}</body></html>"""
+        st.download_button("📥 Baixar PDF (Meta por Vendedor)", data=html_ken_vend.encode('utf-8'),
+                           file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.html',
+                           mime='text/html', use_container_width=True)
+    else:
+        st.warning("Nenhuma venda de Kenvue no mês atual para o canal Perfumaria.")
 else:
-    st.warning("Nenhum dado de Kenvue no canal Perfumaria para os filtros atuais.")
+    st.warning("Nenhuma perfumaria ativa na janela móvel.")
 
 st.divider()
 
@@ -678,28 +728,96 @@ st.subheader("🟤 Foco Estratégico: Linha Cenoura & Bronze")
 df_cenoura = df_relatorio_base[df_relatorio_base['Linha_Produto'] == 'CENOURA & BRONZE'].copy()
 
 if not df_cenoura.empty:
-    st.markdown("**Positivação por Vendedor (Cenoura & Bronze)**")
+    # Definir meses da janela e mês atual
+    if mes_selecionado != "Todos":
+        if ano_selecionado != "Todos":
+            ano_ref = int(ano_selecionado)
+        else:
+            ano_ref = df_cenoura['Ano'].max()
+        mes_atual_num = int(mes_selecionado.split(' - ')[0])
+        months_window = [f"{a}-{m:02d}" for a, m in meses_janela]
+        current_month_str = f"{ano_ref}-{mes_atual_num:02d}"
+    else:
+        months_window = sorted(df_cenoura['Mês_Ano'].unique())
+        current_month_str = months_window[-1] if months_window else None
 
-    df_cenoura_vend = df_cenoura.groupby('nome_vendedor')['codigo_cliente'].nunique().reset_index()
-    df_cenoura_vend.columns = ['Vendedor', 'Clientes Positivados']
-    df_cenoura_vend = df_cenoura_vend.sort_values('Clientes Positivados', ascending=False)
+    df_cenoura_window = df_cenoura[df_cenoura['Mês_Ano'].isin(months_window)].copy()
+    df_cenoura_mes_atual = df_cenoura[df_cenoura['Mês_Ano'] == current_month_str].copy() if current_month_str else pd.DataFrame()
 
-    fig_cenoura = px.bar(df_cenoura_vend, x='Vendedor', y='Clientes Positivados',
-                         title='Clientes Positivados - Linha Cenoura & Bronze',
-                         text='Clientes Positivados', color='Clientes Positivados',
-                         color_continuous_scale='Oranges')
-    fig_cenoura.update_traces(textposition='outside')
-    fig_cenoura.update_layout(xaxis_title="", yaxis_title="Clientes")
-    st.plotly_chart(fig_cenoura, use_container_width=True)
+    vendedores_cen = df_cenoura['nome_vendedor'].dropna().unique()
+    lista_cen = []
+    for vend in vendedores_cen:
+        df_vend_window = df_cenoura_window[df_cenoura_window['nome_vendedor'] == vend]
+        media_6m = df_vend_window.groupby('Mês_Ano')['codigo_cliente'].nunique().mean() if not df_vend_window.empty else 0
 
-    st.dataframe(df_cenoura_vend, use_container_width=True, hide_index=True)
+        df_vend_mes = df_cenoura_mes_atual[df_cenoura_mes_atual['nome_vendedor'] == vend] if not df_cenoura_mes_atual.empty else pd.DataFrame()
+        clientes_mes = df_vend_mes['codigo_cliente'].nunique() if not df_vend_mes.empty else 0
 
-    output_cenoura = BytesIO()
-    with pd.ExcelWriter(output_cenoura, engine='openpyxl') as writer:
-        df_cenoura_vend.to_excel(writer, index=False, sheet_name='Cenoura Bronze')
-    st.download_button("📥 Baixar Excel (Cenoura & Bronze)", data=output_cenoura.getvalue(),
+        pct = (clientes_mes / media_6m * 100) if media_6m > 0 else 0
+
+        lista_cen.append({
+            'Vendedor': vend,
+            'Média 6M': round(media_6m, 1),
+            'Mês Atual': clientes_mes,
+            '% Mês vs Média': round(pct, 1)
+        })
+    df_cen_vend = pd.DataFrame(lista_cen)
+
+    # Gráfico 1: média 6M
+    fig_cen_media = px.bar(df_cen_vend, x='Vendedor', y='Média 6M',
+                           title='Positivação Média (6 meses) - Cenoura & Bronze',
+                           text='Média 6M', color='Média 6M', color_continuous_scale='Blues')
+    fig_cen_media.update_traces(textposition='outside')
+    fig_cen_media.update_layout(xaxis_title="", yaxis_title="Média de clientes")
+    st.plotly_chart(fig_cen_media, use_container_width=True)
+
+    # Gráfico 2: mês atual
+    fig_cen_mes = px.bar(df_cen_vend, x='Vendedor', y='Mês Atual',
+                         title='Positivação no Mês - Cenoura & Bronze',
+                         text='Mês Atual', color='Mês Atual', color_continuous_scale='Oranges')
+    fig_cen_mes.update_traces(textposition='outside')
+    fig_cen_mes.update_layout(xaxis_title="", yaxis_title="Clientes")
+    st.plotly_chart(fig_cen_mes, use_container_width=True)
+
+    # Tabela
+    st.dataframe(df_cen_vend, use_container_width=True, hide_index=True)
+
+    # Downloads
+    output_cen = BytesIO()
+    with pd.ExcelWriter(output_cen, engine='openpyxl') as writer:
+        df_cen_vend.to_excel(writer, index=False, sheet_name='Cenoura Bronze')
+    st.download_button("📥 Baixar Excel (Resumo)", data=output_cen.getvalue(),
                        file_name=f'cenoura_bronze_{datetime.now().strftime("%Y%m%d")}.xlsx',
                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+
+    html_cen_resumo = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Cenoura & Bronze - Resumo</h1>{df_cen_vend.to_html(index=False)}</body></html>"""
+    st.download_button("📥 Baixar PDF (Resumo)", data=html_cen_resumo.encode('utf-8'),
+                       file_name=f'cenoura_bronze_resumo_{datetime.now().strftime("%Y%m%d")}.html',
+                       mime='text/html', use_container_width=True)
+
+    # Relatório de clientes atendidos na janela mas não no mês
+    st.markdown("**Clientes atendidos nos 6 meses, mas não no mês atual**")
+    clientes_janela = df_cenoura_window['codigo_cliente'].unique()
+    clientes_mes = df_cenoura_mes_atual['codigo_cliente'].unique() if not df_cenoura_mes_atual.empty else []
+    clientes_ausentes = [c for c in clientes_janela if c not in clientes_mes]
+
+    if clientes_ausentes:
+        df_cen_ausentes = df_base[df_base['codigo_cliente'].isin(clientes_ausentes)][['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']]
+        df_cen_ausentes.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
+        st.dataframe(df_cen_ausentes, use_container_width=True, hide_index=True)
+
+        output_cen_ausentes = BytesIO()
+        with pd.ExcelWriter(output_cen_ausentes, engine='openpyxl') as writer:
+            df_cen_ausentes.to_excel(writer, index=False, sheet_name='Ausentes')
+        st.download_button("📥 Baixar Excel (Clientes Ausentes)", data=output_cen_ausentes.getvalue(),
+                           file_name=f'cenoura_ausentes_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+        html_cen_ausentes = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Cenoura & Bronze - Clientes Ausentes no Mês</h1>{df_cen_ausentes.to_html(index=False)}</body></html>"""
+        st.download_button("📥 Baixar PDF (Clientes Ausentes)", data=html_cen_ausentes.encode('utf-8'),
+                           file_name=f'cenoura_ausentes_{datetime.now().strftime("%Y%m%d")}.html',
+                           mime='text/html', use_container_width=True)
+    else:
+        st.info("Todos os clientes atendidos na janela compraram no mês atual.")
 else:
     st.warning("Nenhum dado da Linha Cenoura & Bronze para os filtros atuais.")
 
