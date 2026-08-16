@@ -371,22 +371,48 @@ df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janela_meses)
 
 # ============================================================
-# NAVEGAÇÃO
+# NAVEGAÇÃO ORGANIZADA (BOTÕES ALINHADOS EM LINHAS)
 # ============================================================
 st.markdown("---")
-opcoes_paginas = [
+st.markdown("### 🧭 Navegação de Módulos")
+
+opcoes_linha_1 = [
     "🏠 Visão Geral",
     "👥 Performance Vendedor",
     "📍 Positivação por Município",
     "🏷️ Positivação por Segmento",
-    "🔀 Oportunidades Cruzadas",
+    "🔀 Oportunidades Cruzadas"
+]
+
+opcoes_linha_2 = [
     "🟢 Softys Falcon",
     "🟠 Kenvue Perfumaria",
     "🟤 Cenoura & Bronze",
     "📋 Batalha Naval",
     "🔍 Ficha do Cliente"
 ]
-opcao = st.radio("Selecione a página:", opcoes_paginas, horizontal=True, key='nav')
+
+if 'nav' not in st.session_state:
+    st.session_state['nav'] = "🏠 Visão Geral"
+
+col_nav_a = st.columns(len(opcoes_linha_1))
+for i, nome_op in enumerate(opcoes_linha_1):
+    with col_nav_a[i]:
+        tipo_botao = "primary" if st.session_state['nav'] == nome_op else "secondary"
+        if st.button(nome_op, use_container_width=True, type=tipo_botao):
+            st.session_state['nav'] = nome_op
+            st.rerun()
+
+col_nav_b = st.columns(len(opcoes_linha_2))
+for i, nome_op in enumerate(opcoes_linha_2):
+    with col_nav_b[i]:
+        tipo_botao = "primary" if st.session_state['nav'] == nome_op else "secondary"
+        if st.button(nome_op, use_container_width=True, type=tipo_botao):
+            st.session_state['nav'] = nome_op
+            st.rerun()
+
+st.markdown("---")
+opcao = st.session_state['nav']
 
 # ============================================================
 # PÁGINA: VISÃO GERAL
@@ -433,7 +459,6 @@ if opcao == "🏠 Visão Geral":
         'Clientes Positivados': lista_valores_grafico
     })
 
-    # Destaque de cor diferente para a coluna YTD (simulando eixo secundário)
     colors = ['#2E8B57' if str(mes) != 'YTD' else '#D9534F' for mes in chart_data['Mês']]
 
     fig = go.Figure(go.Bar(
