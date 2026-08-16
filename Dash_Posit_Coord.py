@@ -18,18 +18,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Esconder links do Streamlit
+# Esconder links do Streamlit e ajustar botões
 st.markdown("""
 <style>
     a[href*="/edit"] { display: none !important; }
     a[href*="github.com"] { display: none !important; }
     .stButton > button {
         width: 100%;
-        height: 100%;
+        height: auto;
         min-height: 50px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        word-wrap: break-word;
+        overflow: visible;
+        line-height: 1.2;
+        padding: 8px 4px;
+        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -440,8 +443,9 @@ for linha in linhas:
 
 opcao = st.session_state['pagina_selecionada']
 
-# Rolar para o topo ao trocar de página
-st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
+# Limpar floats e rolar para o topo
+st.markdown("<div style='clear:both;'></div>", unsafe_allow_html=True)
+st.markdown("<script>setTimeout(function(){ window.scrollTo(0, 0); }, 100);</script>", unsafe_allow_html=True)
 
 # ============================================================
 # PÁGINA: VISÃO GERAL
@@ -473,7 +477,7 @@ if opcao == "🏠 Visão Geral":
     df_ytd = df_historico[(df_historico['Ano'] == ano_ytd) & (df_historico['MŒs'] <= mes_num)]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
-    # Gráfico com eixo secundário para YTD
+    # Gráfico com eixo secundário e valores nas barras
     df_meses = pd.DataFrame({
         'Mês': list(mensal_pos['Mês']),
         'Clientes Positivados': list(mensal_pos['Clientes Positivados'])
@@ -486,6 +490,8 @@ if opcao == "🏠 Visão Geral":
     fig.add_trace(go.Bar(
         x=df_meses['Rótulo'],
         y=df_meses['Clientes Positivados'],
+        text=df_meses['Clientes Positivados'],
+        textposition='outside',
         marker_color='#2E8B57',
         name='Mensal',
         yaxis='y',
@@ -496,6 +502,8 @@ if opcao == "🏠 Visão Geral":
     fig.add_trace(go.Bar(
         x=['YTD'],
         y=[ytd_total],
+        text=[ytd_total],
+        textposition='outside',
         marker_color='#1a3a4a',
         name='YTD',
         yaxis='y2',
@@ -641,7 +649,6 @@ elif opcao == "🏷️ Positivação por Segmento":
 elif opcao == "🔀 Oportunidades Cruzadas":
     st.subheader("🔀 Oportunidades Cruzadas")
 
-    # Seleção de período de análise
     meses_oportunidades = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
     if not meses_oportunidades:
         st.warning("Nenhum dado disponível para análise.")
@@ -657,13 +664,11 @@ elif opcao == "🔀 Oportunidades Cruzadas":
         st.warning("Mês início deve ser menor ou igual ao mês fim.")
         st.stop()
 
-    # Filtrar dados pelo período selecionado
     df_analise = df_relatorio_base[
         (df_relatorio_base['MŒs_Ano'] >= mes_op_inicio) & 
         (df_relatorio_base['MŒs_Ano'] <= mes_op_fim)
     ].copy()
 
-    # Seleção das indústrias
     col_op1, col_op2 = st.columns(2)
     with col_op1:
         st.markdown("**Indústrias da Base (compradas)**")
@@ -737,26 +742,28 @@ elif opcao == "🟢 Softys Falcon":
 
         ytd_total = df_softys_ano['codigo_cliente'].nunique()
 
-        # Gráfico com eixo secundário para YTD
+        # Gráfico com eixo secundário e valores nas barras
         df_mensal_softys = monthly_totals[['Mês', 'Clientes']].copy()
         df_mensal_softys['Rótulo'] = df_mensal_softys['Mês'].apply(formatar_mes_rotulo)
 
         fig_softys = go.Figure()
 
-        # Barras mensais (eixo esquerdo)
         fig_softys.add_trace(go.Bar(
             x=df_mensal_softys['Rótulo'],
             y=df_mensal_softys['Clientes'],
+            text=df_mensal_softys['Clientes'],
+            textposition='outside',
             marker_color='#2E8B57',
             name='Mensal',
             yaxis='y',
             hovertemplate='Mês: %{x}<br>Clientes: %{y}'
         ))
 
-        # Barra YTD (eixo direito)
         fig_softys.add_trace(go.Bar(
             x=['YTD'],
             y=[ytd_total],
+            text=[ytd_total],
+            textposition='outside',
             marker_color='#1a3a4a',
             name='YTD',
             yaxis='y2',
@@ -781,7 +788,6 @@ elif opcao == "🟢 Softys Falcon":
         tabela['YTD'] = ytd_series
         tabela = tabela.reset_index().fillna(0)
 
-        # Renomear colunas de meses para rótulos legíveis
         rename_cols = {col: formatar_mes_rotulo(col) for col in meses_ano}
         tabela.rename(columns=rename_cols, inplace=True)
         ordered_cols = ['Categoria'] + list(rename_cols.values()) + ['YTD']
@@ -844,18 +850,15 @@ elif opcao == "🟢 Softys Falcon":
 # PÁGINA: KENVUE PERFUMARIA (CORRIGIDA)
 # ============================================================
 elif opcao == "🟠 Kenvue Perfumaria":
-    # Vendedores elegíveis para vender KENVUE (pasta amarela ou mista)
     vendedores_kenvue = [v for v in df_base['nome_vendedor_base'].unique()
                          if vendedor_pasta.get(v) in ['PA', 'PVA']]
 
-    # Perfumarias ativas na janela móvel atendidas por vendedores elegíveis
     df_perfumarias_ativas = df_historico_janela[
         (df_historico_janela['Canal'] == 'PERFUMARIA') &
         (df_historico_janela['nome_vendedor'].isin(vendedores_kenvue))
     ].copy()
 
     if not df_perfumarias_ativas.empty:
-        # Vendas de Kenvue no mês atual, apenas de vendedores elegíveis
         df_kenvue_mes = df_filtrado[
             (df_filtrado['Nome_Fabricante'] == 'KENVUE') &
             (df_filtrado['Canal'] == 'PERFUMARIA') &
@@ -873,25 +876,21 @@ elif opcao == "🟠 Kenvue Perfumaria":
             st.metric("Atendidas com Kenvue (mês atual)", f"{atendidos} ({pct_atendido:.1f}%)")
             st.progress(min(pct_atendido / 100, 1.0), text="Meta: 50%")
 
-            # Clientes que ainda não foram atendidos com Kenvue no mês
             clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique()
                                       if c not in clientes_kenvue_mes]
 
-            # Mapear cliente -> vendedor responsável (PA/PVA)
             df_base_kenvue = df_base[df_base['nome_vendedor_base'].isin(vendedores_kenvue)]
             df_base_kenvue = df_base_kenvue.drop_duplicates(subset=['codigo_cliente'], keep='first')
 
             col_ken1, col_ken2 = st.columns(2)
             with col_ken1:
                 st.markdown(f"✅ **Chegamos** ({atendidos})")
-                # Usar df_kenvue_mes (já tem o vendedor correto da venda)
                 df_chegamos = df_kenvue_mes[
                     ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']
                 ].drop_duplicates()
                 df_chegamos.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_chegamos, use_container_width=True, hide_index=True)
 
-                # Excel
                 output_cheg = BytesIO()
                 with pd.ExcelWriter(output_cheg, engine='openpyxl') as writer:
                     df_chegamos.to_excel(writer, index=False, sheet_name='Chegamos')
@@ -900,7 +899,6 @@ elif opcao == "🟠 Kenvue Perfumaria":
                                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                    use_container_width=True)
 
-                # PDF
                 pdf_cheg = gerar_pdf_html(df_chegamos, "Kenvue - Chegamos")
                 if pdf_cheg:
                     st.download_button("📄 Baixar PDF (Chegamos)", data=pdf_cheg,
@@ -909,14 +907,12 @@ elif opcao == "🟠 Kenvue Perfumaria":
 
             with col_ken2:
                 st.markdown(f"❌ **Não chegamos** ({len(clientes_nao_atendidos)})")
-                # Usar base deduplicada de vendedores elegíveis
                 df_nao = df_base_kenvue[df_base_kenvue['codigo_cliente'].isin(clientes_nao_atendidos)][
                     ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']
                 ]
                 df_nao.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_nao, use_container_width=True, hide_index=True)
 
-                # Excel
                 output_nao = BytesIO()
                 with pd.ExcelWriter(output_nao, engine='openpyxl') as writer:
                     df_nao.to_excel(writer, index=False, sheet_name='Nao Chegamos')
@@ -925,14 +921,12 @@ elif opcao == "🟠 Kenvue Perfumaria":
                                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                    use_container_width=True)
 
-                # PDF
                 pdf_nao = gerar_pdf_html(df_nao, "Kenvue - Não Chegamos")
                 if pdf_nao:
                     st.download_button("📄 Baixar PDF (Não Chegamos)", data=pdf_nao,
                                        file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.pdf',
                                        mime='application/pdf', use_container_width=True)
 
-            # Meta por vendedor (apenas vendedores elegíveis)
             st.markdown("**Meta por Vendedor (50% das perfumarias ativas)**")
             vendedores_perf = df_perfumarias_ativas['nome_vendedor'].dropna().unique()
             lista_ken = []
@@ -949,7 +943,6 @@ elif opcao == "🟠 Kenvue Perfumaria":
             df_ken_vend = pd.DataFrame(lista_ken)
             st.dataframe(df_ken_vend, use_container_width=True, hide_index=True)
 
-            # Excel
             output_kenv = BytesIO()
             with pd.ExcelWriter(output_kenv, engine='openpyxl') as writer:
                 df_ken_vend.to_excel(writer, index=False, sheet_name='Meta Kenvue Vendedor')
@@ -958,7 +951,6 @@ elif opcao == "🟠 Kenvue Perfumaria":
                                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                use_container_width=True)
 
-            # PDF
             pdf_kenv = gerar_pdf_html(df_ken_vend, "Meta Kenvue por Vendedor")
             if pdf_kenv:
                 st.download_button("📄 Baixar PDF (Meta por Vendedor)", data=pdf_kenv,
@@ -1057,7 +1049,6 @@ elif opcao == "📋 Batalha Naval":
 
     st.metric("Total de Clientes no Relatório", len(matriz_bin))
 
-    # Estilizar cores (1 verde, 0 vermelho)
     def color_bn(val):
         if val == 1:
             return 'background-color: #c6efce; color: #006100; font-weight: bold; text-align: center'
@@ -1119,7 +1110,6 @@ elif opcao == "🔍 Ficha do Cliente":
             codigo = cliente_sel.split(' - ')[0].strip()
             df_cliente = df_ficha[df_ficha['codigo_cliente'].astype(str).str.strip() == codigo]
             if not df_cliente.empty:
-                # Tratamento de valores nulos
                 def valor_ou_vazio(v):
                     if pd.isna(v) or v == '':
                         return ''
@@ -1145,14 +1135,11 @@ elif opcao == "🔍 Ficha do Cliente":
                         tabela.append(linha)
                     df_tab = pd.DataFrame(tabela)
 
-                    # Renomear colunas de meses
                     rename_cols_ficha = {m: formatar_mes_rotulo(m) for m in meses_disp}
                     df_tab.rename(columns=rename_cols_ficha, inplace=True)
-                    # Reordenar colunas: Indústria, rótulos de meses, Total
                     colunas_finais = ['Indústria'] + list(rename_cols_ficha.values()) + ['Total']
                     df_tab = df_tab[colunas_finais]
 
-                    # Estilizar cores
                     def color_ficha(val):
                         if val == 1:
                             return 'background-color: #c6efce; color: #006100; font-weight: bold; text-align: center'
