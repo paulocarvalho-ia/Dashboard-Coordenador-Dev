@@ -408,6 +408,9 @@ opcoes_paginas = [
 ]
 opcao = st.radio("Selecione a página:", opcoes_paginas, horizontal=True, key='nav')
 
+# Rolar para o topo ao trocar de página
+st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
+
 # ============================================================
 # PÁGINA: VISÃO GERAL
 # ============================================================
@@ -928,7 +931,7 @@ elif opcao == "🟤 Cenoura & Bronze":
         st.warning("Nenhum dado de Cenoura & Bronze para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: BATALHA NAVAL (Geral) - NOVA VERSÃO COM INTERVALO DE MESES
+# PÁGINA: BATALHA NAVAL (Geral) - COM INTERVALO DE MESES E CORREÇÕES
 # ============================================================
 elif opcao == "📋 Batalha Naval":
     meses_batalha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
@@ -970,8 +973,8 @@ elif opcao == "📋 Batalha Naval":
 
     styled_bn = matriz_bin.style.map(color_bn, subset=colunas_fabricantes)
 
-    with st.expander("Visualizar tabela", expanded=True):
-        st.dataframe(styled_bn, use_container_width=True, hide_index=True)
+    with st.expander("Visualizar tabela", expanded=False):
+        st.dataframe(styled_bn, use_container_width=True, hide_index=True, height=400)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -989,7 +992,7 @@ elif opcao == "📋 Batalha Naval":
                                mime='application/pdf', use_container_width=True)
 
 # ============================================================
-# PÁGINA: FICHA DO CLIENTE - NOVA VERSÃO COM INTERVALO DE MESES
+# PÁGINA: FICHA DO CLIENTE - COM INTERVALO DE MESES E CORES
 # ============================================================
 elif opcao == "🔍 Ficha do Cliente":
     meses_ficha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
@@ -1057,7 +1060,7 @@ elif opcao == "🔍 Ficha do Cliente":
                         return ''
 
                     styled_ficha = df_tab.style.map(color_ficha, subset=meses_disp)
-                    st.dataframe(styled_ficha, use_container_width=True, hide_index=True)
+                    st.dataframe(styled_ficha, use_container_width=True, hide_index=True, height=400)
 
                     output_ficha = BytesIO()
                     with pd.ExcelWriter(output_ficha, engine='openpyxl') as writer:
