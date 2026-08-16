@@ -18,11 +18,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Esconder links do Streamlit
+# Estilos CSS Customizados (Esconde links padrão e padroniza a altura dos botões)
 st.markdown("""
 <style>
     a[href*="/edit"] { display: none !important; }
     a[href*="github.com"] { display: none !important; }
+    
+    /* Padroniza a altura e alinhamento dos botões de navegação */
+    div.stButton > button {
+        width: 100%;
+        height: 3.2rem;
+        white-space: normal;
+        font-size: 14px;
+        padding: 0.4rem 0.6rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -371,7 +380,7 @@ df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janela_meses)
 
 # ============================================================
-# NAVEGAÇÃO ORGANIZADA (BOTÕES SIMÉTRICOS E DE MESMO TAMANHO)
+# NAVEGAÇÃO ORGANIZADA (BOTÕES DE MESMA LARGURA E ALTURA)
 # ============================================================
 st.markdown("---")
 st.markdown("### 🧭 Navegação de Módulos")
@@ -395,7 +404,6 @@ opcoes_linha_2 = [
 if 'nav' not in st.session_state:
     st.session_state['nav'] = "🏠 Visão Geral"
 
-# Garantindo colunas proporcionais idênticas para a Linha 1 (5 colunas)
 cols_1 = st.columns(len(opcoes_linha_1))
 for i, nome_op in enumerate(opcoes_linha_1):
     with cols_1[i]:
@@ -404,7 +412,6 @@ for i, nome_op in enumerate(opcoes_linha_1):
             st.session_state['nav'] = nome_op
             st.rerun()
 
-# Garantindo colunas proporcionais idênticas para a Linha 2 (5 colunas)
 cols_2 = st.columns(len(opcoes_linha_2))
 for i, nome_op in enumerate(opcoes_linha_2):
     with cols_2[i]:
@@ -430,19 +437,23 @@ if opcao == "🏠 Visão Geral":
     col_a2.metric("Positivados no Mês", positivados_periodo)
     col_a3.metric("% Positivação (Ativa)", f"{pct_ativa:.1f}%")
 
+    # Tratamento correto para definir o Ano de referência e o limite YTD
     if mes_selecionado != "Todos":
         mes_num = int(mes_selecionado.split(' - ')[0])
         anos_do_mes = df_historico[df_historico['Mes_Num'] == mes_num]['Ano'].unique()
         ano_ytd = max(anos_do_mes) if len(anos_do_mes) > 0 else df_historico['Ano'].max()
     else:
-        ano_ytd = df_historico['Ano'].max()
+        ano_ytd = df_historico['Ano'].max() if not df_historico.empty else datetime.now().year
         mes_num = df_historico['Mes_Num'].max() if not df_historico.empty else 12
 
+    # Filtrar dados para o gráfico de barras mensais e YTD respeitando o histórico filtrado
     df_historico_ano = df_historico[df_historico['Ano'] == ano_ytd]
     df_mensal_ativos = df_historico_ano[df_historico_ano['Nome_Fabricante'].notna()]
+    
     mensal_pos = df_mensal_ativos.groupby('Mes_Ano')['codigo_cliente'].nunique().reset_index()
     mensal_pos.columns = ['Mês', 'Clientes Positivados']
 
+    # Clientes únicos acumulados no ano até o mês selecionado (YTD correto de clientes positivados)
     df_ytd = df_historico_ano[
         (df_historico_ano['Mes_Num'] <= mes_num) & 
         (df_historico_ano['Nome_Fabricante'].notna())
