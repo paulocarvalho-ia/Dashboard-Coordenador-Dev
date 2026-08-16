@@ -363,14 +363,15 @@ with st.expander("🎯 Filtros", expanded=True):
                        7:'Julho', 8:'Agosto', 9:'Setembro', 10:'Outubro', 11:'Novembro', 12:'Dezembro'}
         lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes.get(int(m), '')}" for m in meses_disponiveis]
 
-        if 'mes' not in st.session_state:
+        if 'mes' not in st.session_state or st.session_state['mes'] not in lista_meses:
             if meses_disponiveis:
                 ultimo_mes = max(meses_disponiveis)
                 st.session_state['mes'] = f"{int(ultimo_mes):02d} - {meses_nomes.get(int(ultimo_mes), '')}"
             else:
                 st.session_state['mes'] = 'Todos'
 
-        mes_selecionado = st.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_top')
+        indice_atual = lista_meses.index(st.session_state['mes']) if st.session_state['mes'] in lista_meses else 0
+        mes_selecionado = st.selectbox("Mês", lista_meses, index=indice_atual, key='mes_top')
         st.session_state['mes'] = mes_selecionado
 
     with col_per2:
