@@ -2,11 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 from datetime import datetime
 from io import BytesIO
 from zoneinfo import ZoneInfo
-import unicodedata
-import re
 
 # ============================================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -18,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Esconder links do Streamlit
 st.markdown("""
 <style>
     a[href*="/edit"] { display: none !important; }
@@ -30,272 +28,100 @@ st.title("📊 Dashboard de Positivação e Cobertura (Teste)")
 st.caption("4 Elos Distribuidora Ltda. - Centro de Custo 622")
 
 # ============================================================
-# CARREGAR DADOS (Google Sheets)
+# CONEXÃO COM GOOGLE SHEETS (BASE produção + BI_Teste)
 # ============================================================
 SHEET_ID = "100LtVtmS76bT2CJd-EIb-bHTgX3F1BVm8Er5vUa-VYQ"
 
 @st.cache_data(ttl=300)
 def load_data():
-    """Carrega e normaliza todos os dados do Google Sheets"""
     url_base = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet="
 
-    try:
-        df_base = pd.read_csv(url_base + "BASE")
-        df_bi = pd.read_csv(url_base + "BI_Teste")
-        df_fabricantes = pd.read_csv(url_base + "FABRICANTE")
-        df_vendedores = pd.read_csv(url_base + "VENDEDORES")
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {str(e)}")
-        st.stop()
+    df_base = pd.read_csv(url_base + "BASE")
+    df_bi   = pd.read_csv(url_base + "BI_Teste")
+    df_fabricantes = pd.read_csv(url_base + "FABRICANTE")
+    df_vendedores  = pd.read_csv(url_base + "VENDEDORES")
 
     data_dados = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    def normalizar_texto(texto):
-        """Remove acentos, caracteres especiais e transforma em minúsculas."""
-        texto = unicodedata.normalize('NFKD', texto)
-        texto = texto.encode('ASCII', 'ignore').decode('ASCII')
-        texto = texto.lower().strip()
-        texto = re.sub(r'\s+', ' ', texto)
-        return texto
-
-    # ============================================================
-    # NORMALIZAR DF_BASE (com detecção robusta)
-    # ============================================================
+    # Normalizar colunas da BASE
     df_base.columns = [str(col).strip() for col in df_base.columns]
-    base_rename = {}
+    df_base = df_base.rename(columns={
+        'Código Cliente': 'codigo_cliente',
+        'Cliente': 'nome_cliente',
+        'Vendedor': 'nome_vendedor_base',
+        'Coligação': 'Cliente_Coligacao',
+        'Coordenador': 'Nome_Coordenador',
+        'Municipio': 'Municipio',
+        'Canal': 'Canal',
+        'Segmento': 'Segmento'
+    })
 
-    for col in df_base.columns:
-        col_norm = normalizar_texto(col)
-        if 'codigo cliente' in col_norm or ('codigo' in col_norm and 'cliente' in col_norm):
-            base_rename[col] = 'codigo_cliente'
-        elif col_norm == 'cliente' or ('cliente' in col_norm and 'nome' in col_norm):
-            base_rename[col] = 'nome_cliente'
-        elif 'vendedor' in col_norm:
-            base_rename[col] = 'nome_vendedor_base'
-        elif 'coligacao' in col_norm or 'coliga' in col_norm:
-            base_rename[col] = 'Cliente_Coligacao'
-        elif 'coordenador' in col_norm:
-            base_rename[col] = 'Nome_Coordenador'
-        elif 'municipio' in col_norm:
-            base_rename[col] = 'Municipio'
-        elif 'canal' in col_norm:
-            base_rename[col] = 'Canal'
-        elif 'segmento' in col_norm:
-            base_rename[col] = 'Segmento'
-
-    df_base = df_base.rename(columns=base_rename)
-
-    # Fallback: se 'nome_cliente' ainda não existir, procurar coluna 'Cliente' original
-    if 'nome_cliente' not in df_base.columns:
-        for col in df_base.columns:
-            if normalizar_texto(col) == 'cliente':
-                df_base.rename(columns={col: 'nome_cliente'}, inplace=True)
-                break
-
-    # Verificar se colunas essenciais existem
-    required_base_cols = ['codigo_cliente', 'nome_cliente', 'nome_vendedor_base',
-                          'Cliente_Coligacao', 'Nome_Coordenador', 'Municipio', 'Canal', 'Segmento']
-    missing_base = [col for col in required_base_cols if col not in df_base.columns]
-    if missing_base:
-        st.error(f"Colunas essenciais não encontradas no DataFrame BASE: {missing_base}")
-        st.write("Colunas disponíveis:", df_base.columns.tolist())
-        st.stop()
-
-    # ============================================================
-    # NORMALIZAR DF_BI (com detecção robusta)
-    # ============================================================
-    df_bi.columns = [str(col).strip() for col in df_bi.columns]
+    # Normalizar colunas da BI_Teste
+    df_bi.columns = [str(col).strip().lower() for col in df_bi.columns]
     bi_rename = {}
-
     for col in df_bi.columns:
-        col_norm = normalizar_texto(col)
-        if 'codigo cliente' in col_norm:
+        if 'código cliente' in col or 'codigo cliente' in col:
             bi_rename[col] = 'codigo_cliente'
-        elif 'vendedor' in col_norm and 'ajustado' in col_norm:
+        elif 'vendedor' in col and 'ajustado' in col:
             bi_rename[col] = 'nome_vendedor_bi'
-        elif 'ano' in col_norm and 'mes' in col_norm:
+        elif 'ano e mês' in col or 'ano e mes' in col:
             bi_rename[col] = 'Ano_e_Mes'
-        elif 'fabricante' in col_norm:
+        elif 'fabricante' in col:
             bi_rename[col] = 'Nome_Fabricante'
-        elif 'linha de produto' in col_norm:
+        elif 'linha de produto' in col:
             bi_rename[col] = 'Linha_Produto'
-        elif 'categoria' in col_norm:
+        elif 'categoria' in col:
             bi_rename[col] = 'Categoria'
-        elif 'valor das vendas' in col_norm:
+        elif 'valor das vendas' in col:
             bi_rename[col] = 'Valor_Vendas'
-
     df_bi = df_bi.rename(columns=bi_rename)
 
-    # Fallback: se ainda não achou a coluna de período, procura diretamente
-    if 'Ano_e_Mes' not in df_bi.columns:
-        for col in df_bi.columns:
-            if 'ano' in col.lower() and 'mes' in col.lower():
-                df_bi.rename(columns={col: 'Ano_e_Mes'}, inplace=True)
-                break
-
-    if 'Ano_e_Mes' not in df_bi.columns:
-        st.error("Não foi possível identificar a coluna de Ano/Mês no DataFrame BI_Teste.")
-        st.write("Colunas disponíveis:", df_bi.columns.tolist())
-        st.stop()
-
-    # Processar datas
+    # Datas
     df_bi['Data'] = pd.to_datetime(df_bi['Ano_e_Mes'] + '-01', errors='coerce')
-    df_bi['MŒs'] = df_bi['Data'].dt.month
+    df_bi['Mês'] = df_bi['Data'].dt.month
     df_bi['Ano'] = df_bi['Data'].dt.year
-    df_bi['MŒs_Ano'] = df_bi['Data'].dt.to_period('M').astype(str)
+    df_bi['Mês_Ano'] = df_bi['Data'].dt.to_period('M').astype(str)
 
-    # ============================================================
-    # MERGE
-    # ============================================================
-    df_base_dedup = df_base.drop_duplicates(subset=['codigo_cliente'], keep='first')
-
-    # Merge principal (por cliente + vendedor)
+    # Merge
     df_merged = df_bi.merge(
-        df_base[['codigo_cliente', 'nome_cliente', 'nome_vendedor_base', 'Cliente_Coligacao', 
-                 'Nome_Coordenador', 'Municipio', 'Canal', 'Segmento']],
+        df_base[['codigo_cliente', 'nome_cliente', 'nome_vendedor_base', 'Cliente_Coligacao', 'Nome_Coordenador',
+                 'Municipio', 'Canal', 'Segmento']],
         left_on=['codigo_cliente', 'nome_vendedor_bi'],
         right_on=['codigo_cliente', 'nome_vendedor_base'],
         how='left'
     )
-
-    # Fallback SEGURO usando map
+    df_fallback = df_bi.merge(
+        df_base[['codigo_cliente', 'nome_cliente', 'nome_vendedor_base', 'Cliente_Coligacao', 'Nome_Coordenador',
+                 'Municipio', 'Canal', 'Segmento']],
+        on='codigo_cliente',
+        how='left',
+        suffixes=('', '_fb')
+    )
     for col in ['nome_cliente', 'Cliente_Coligacao', 'Nome_Coordenador', 'Municipio', 'Canal', 'Segmento']:
-        if col in df_base.columns:
-            fallback_map = df_base_dedup.set_index('codigo_cliente')[col].to_dict()
-            df_merged[col] = df_merged[col].fillna(df_merged['codigo_cliente'].map(fallback_map))
+        if col in df_merged.columns and f'{col}_fb' in df_fallback.columns:
+            df_merged[col] = df_merged[col].fillna(df_fallback[f'{col}_fb'])
 
     df_merged['nome_vendedor'] = df_merged['nome_vendedor_bi']
 
-    # Mapear pastas
     fabricante_pasta = dict(zip(df_fabricantes['Nome Fabricante'], df_fabricantes['Pasta']))
     vendedor_pasta = dict(zip(df_vendedores['Vendedor'], df_vendedores['Pasta']))
 
     return df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta
 
-# Carregar dados
 df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta = load_data()
 
-TODAS_INDUSTRIAS = sorted([i for i in df_bi['Nome_Fabricante'].dropna().unique() if str(i).strip() != ''])
+TODAS_INDUSTRIAS = sorted(df_bi['Nome_Fabricante'].dropna().unique())
+TODAS_INDUSTRIAS = [i for i in TODAS_INDUSTRIAS if i.strip() != '']
 
 # ============================================================
-# FUNÇÕES AUXILIARES
-# ============================================================
-def gerar_pdf_html(tabela_df, titulo):
-    """Gera PDF a partir de DataFrame usando HTML + CSS"""
-    try:
-        from weasyprint import HTML
-
-        html_content = f"""
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                @page {{ size: A4 landscape; margin: 1cm; }}
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                h1 {{ color: #1a3a4a; font-size: 18px; margin-bottom: 15px; }}
-                table {{ border-collapse: collapse; width: 100%; font-size: 9px; }}
-                th {{ background: #1a3a4a; color: white; padding: 6px 4px; border: 1px solid #1a3a4a; font-weight: bold; }}
-                td {{ border: 1px solid #ddd; padding: 4px; text-align: center; }}
-                tr:nth-child(even) {{ background: #f9f9f9; }}
-                tr:hover {{ background: #f0f0f0; }}
-                .footer {{ margin-top: 20px; font-size: 8px; color: #666; text-align: right; }}
-            </style>
-        </head>
-        <body>
-            <h1>{titulo}</h1>
-            {tabela_df.to_html(index=False, border=1, classes='dataframe')}
-            <div class="footer">Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
-        </body>
-        </html>
-        """
-
-        pdf_buffer = BytesIO()
-        HTML(string=html_content).write_pdf(pdf_buffer)
-        pdf_buffer.seek(0)
-        return pdf_buffer.getvalue()
-    except ImportError:
-        st.error("Biblioteca 'weasyprint' não instalada. Execute: pip install weasyprint")
-        return None
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF: {str(e)}")
-        return None
-
-def aplicar_filtros_comuns(df, incluir_mes=True):
-    """Aplica todos os filtros comuns aos dados"""
-    df = df.copy()
-
-    if pasta_selecionada not in ["Todas", "PVA"]:
-        vendedores_pasta = [v for v in df_base['nome_vendedor_base'].unique() 
-                           if vendedor_pasta.get(v) == pasta_selecionada]
-        df = df[df['nome_vendedor'].isin(vendedores_pasta)]
-
-    if vendedor_selecionado != "Todos":
-        df = df[df['nome_vendedor'] == vendedor_selecionado]
-
-    if coordenador_selecionado != "Todos":
-        df = df[df['Nome_Coordenador'] == coordenador_selecionado]
-
-    if coligacao_selecionada != "Todas":
-        df = df[df['Cliente_Coligacao'] == coligacao_selecionada]
-
-    if municipio_selecionado:
-        df = df[df['Municipio'].isin(municipio_selecionado)]
-    if canal_selecionado:
-        df = df[df['Canal'].isin(canal_selecionado)]
-    if segmento_selecionado:
-        df = df[df['Segmento'].isin(segmento_selecionado)]
-
-    if incluir_mes and mes_selecionado != "Todos":
-        mes_num = int(mes_selecionado.split(' - ')[0])
-        anos_do_mes = df[df['MŒs'] == mes_num]['Ano'].unique()
-        ano_ref = max(anos_do_mes) if len(anos_do_mes) > 0 else df['Ano'].max()
-        mes_ano_ref = f"{ano_ref}-{mes_num:02d}"
-        df = df[df['MŒs_Ano'] == mes_ano_ref]
-
-    if industria_selecionada_lista:
-        df = df[df['Nome_Fabricante'].isin(industria_selecionada_lista)]
-    if categoria_selecionada:
-        df = df[df['Categoria'].isin(categoria_selecionada)]
-    if linha_selecionada:
-        df = df[df['Linha_Produto'].isin(linha_selecionada)]
-
-    return df
-
-def calcular_janela_movel(df_historico, mes_selecionado, janela_meses):
-    """Calcula a janela móvel de meses anteriores"""
-    if mes_selecionado == "Todos":
-        return df_historico.copy()
-
-    mes_num = int(mes_selecionado.split(' - ')[0])
-    anos_do_mes = df_historico[df_historico['MŒs'] == mes_num]['Ano'].unique()
-    ano_ref = max(anos_do_mes) if len(anos_do_mes) > 0 else df_historico['Ano'].max()
-
-    meses_janela = []
-    for i in range(1, janela_meses + 1):
-        mes = mes_num - i
-        ano = ano_ref
-        while mes <= 0:
-            mes += 12
-            ano -= 1
-        meses_janela.append((ano, mes))
-
-    cond_janela = pd.Series(False, index=df_historico.index)
-    for a, m in meses_janela:
-        cond_janela |= (df_historico['Ano'] == a) & (df_historico['MŒs'] == m)
-
-    return df_historico[cond_janela]
-
-# ============================================================
-# FILTROS
+# FILTROS NO TOPO (REORGANIZADOS)
 # ============================================================
 with st.expander("🎯 Filtros", expanded=True):
     st.markdown("**Equipe de Vendas**")
     col_eq1, col_eq2, col_eq3 = st.columns(3)
-
     with col_eq1:
         lista_coordenadores = ["Todos"] + sorted(df_base['Nome_Coordenador'].dropna().unique().tolist())
         coordenador_selecionado = st.selectbox("Coordenador", lista_coordenadores, key='coord_top')
-
     with col_eq2:
         if coordenador_selecionado != "Todos":
             vendedores_base = df_base[df_base['Nome_Coordenador'] == coordenador_selecionado]['nome_vendedor_base'].dropna().unique()
@@ -303,11 +129,9 @@ with st.expander("🎯 Filtros", expanded=True):
             vendedores_base = df_base['nome_vendedor_base'].dropna().unique()
         lista_vendedores = ["Todos"] + sorted(vendedores_base)
         vendedor_selecionado = st.selectbox("Vendedor", lista_vendedores, key='vend_top')
-
     with col_eq3:
         lista_pastas = ["Todas", "PA", "PV", "PVA"]
         pasta_selecionada = st.selectbox("Pasta", lista_pastas, key='pasta_top')
-
         if pasta_selecionada in ["Todas", "PVA"]:
             INDUSTRIAS_PERMITIDAS = TODAS_INDUSTRIAS.copy()
         else:
@@ -315,23 +139,19 @@ with st.expander("🎯 Filtros", expanded=True):
 
     st.markdown("**Produto**")
     col_prod1, col_prod2, col_prod3 = st.columns(3)
-
     with col_prod1:
         if pasta_selecionada in ["Todas", "PVA"]:
             INDUSTRIAS_DISPONIVEIS = TODAS_INDUSTRIAS.copy()
         else:
             INDUSTRIAS_DISPONIVEIS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
         industria_selecionada_lista = st.multiselect("Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, key='ind_top')
-
     with col_prod2:
         categoria_selecionada = st.multiselect("Categoria(s)", options=sorted(df_bi['Categoria'].dropna().unique()), key='cat_top')
-
     with col_prod3:
         linha_selecionada = st.multiselect("Linha(s) de Produto", options=sorted(df_bi['Linha_Produto'].dropna().unique()), key='linha_top')
 
     st.markdown("**Localização**")
     col_loc1, col_loc2, col_loc3, col_loc4 = st.columns(4)
-
     with col_loc1:
         if vendedor_selecionado != "Todos":
             clientes_do_vendedor = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].unique()
@@ -344,51 +164,95 @@ with st.expander("🎯 Filtros", expanded=True):
             coligacoes_filtradas = df_base['Cliente_Coligacao'].dropna().unique()
         lista_coligacoes = ["Todas"] + sorted(coligacoes_filtradas)
         coligacao_selecionada = st.selectbox("Coligação", lista_coligacoes, key='colig_top')
-
     with col_loc2:
         canal_selecionado = st.multiselect("Canal(is)", options=sorted(df_base['Canal'].dropna().unique()), key='canal_top')
-
     with col_loc3:
         segmento_selecionado = st.multiselect("Segmento(s)", options=sorted(df_base['Segmento'].dropna().unique()), key='seg_top')
-
     with col_loc4:
         municipio_selecionado = st.multiselect("Município(s)", options=sorted(df_base['Municipio'].dropna().unique()), key='muni_top')
 
     st.markdown("**Período e Metas**")
     col_per1, col_per2, col_per3, col_per4 = st.columns(4)
-
     with col_per1:
-        meses_disponiveis = sorted(df_merged['MŒs'].dropna().unique())
-        meses_nomes = {1:'Janeiro', 2:'Fevereiro', 3:'Março', 4:'Abril', 5:'Maio', 6:'Junho', 
-                       7:'Julho', 8:'Agosto', 9:'Setembro', 10:'Outubro', 11:'Novembro', 12:'Dezembro'}
-        lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes.get(int(m), '')}" for m in meses_disponiveis]
-
+        meses_disponiveis = sorted(df_merged['Mês'].dropna().unique())
+        meses_nomes = {1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'}
+        lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes[int(m)]}" for m in meses_disponiveis]
         if 'mes' not in st.session_state:
             if meses_disponiveis:
-                ultimo_mes = max(meses_disponiveis)
-                st.session_state['mes'] = f"{int(ultimo_mes):02d} - {meses_nomes.get(int(ultimo_mes), '')}"
+                ultimo_mes = meses_disponiveis[-1]
+                st.session_state['mes'] = f"{ultimo_mes:02d} - {meses_nomes.get(ultimo_mes, '')}"
             else:
                 st.session_state['mes'] = 'Todos'
-
         mes_selecionado = st.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_top')
         st.session_state['mes'] = mes_selecionado
-
     with col_per2:
         janela_meses = st.slider("Janela da Base Ativa (meses)", 3, 6, 6, key='janela_top')
-
     with col_per3:
         meta_ativa = st.number_input("Meta Base Ativa (%)", 0, 100, 70, key='meta_ativa_top')
-
     with col_per4:
         meta_total = st.number_input("Meta Carteira Total (%)", 0, 100, 50, key='meta_total_top')
 
 # ============================================================
-# APLICAR FILTROS
+# APLICAR FILTROS COMUNS
 # ============================================================
+def aplicar_filtros_comuns(df, incluir_mes=True):
+    df = df.copy()
+    df = df[df['Nome_Fabricante'].isin(INDUSTRIAS_PERMITIDAS)]
+
+    if pasta_selecionada != "Todas":
+        vendedores_pasta = [v for v in df_base['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
+        df = df[df['nome_vendedor'].isin(vendedores_pasta)]
+    elif vendedor_selecionado != "Todos":
+        df = df[df['nome_vendedor'] == vendedor_selecionado]
+
+    if coordenador_selecionado != "Todos":
+        df = df[df['Nome_Coordenador'] == coordenador_selecionado]
+    if coligacao_selecionada != "Todas":
+        df = df[df['Cliente_Coligacao'] == coligacao_selecionada]
+    if municipio_selecionado:
+        df = df[df['Municipio'].isin(municipio_selecionado)]
+    if canal_selecionado:
+        df = df[df['Canal'].isin(canal_selecionado)]
+    if segmento_selecionado:
+        df = df[df['Segmento'].isin(segmento_selecionado)]
+    if incluir_mes and mes_selecionado != "Todos":
+        mes_num = int(mes_selecionado.split(' - ')[0])
+        df = df[df['Mês'] == mes_num]
+    if industria_selecionada_lista:
+        df = df[df['Nome_Fabricante'].isin(industria_selecionada_lista)]
+    if categoria_selecionada:
+        df = df[df['Categoria'].isin(categoria_selecionada)]
+    if linha_selecionada:
+        df = df[df['Linha_Produto'].isin(linha_selecionada)]
+    return df
+
 df_filtrado = aplicar_filtros_comuns(df_merged, incluir_mes=True)
 df_historico = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
-df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janela_meses)
+
+# Janela móvel
+if mes_selecionado != "Todos":
+    mes_num = int(mes_selecionado.split(' - ')[0])
+    anos_do_mes = df_historico[df_historico['Mês'] == mes_num]['Ano'].unique()
+    if len(anos_do_mes) > 0:
+        ano_ref = max(anos_do_mes)
+    else:
+        ano_ref = df_historico['Ano'].max()
+    mes_atual = mes_num
+    meses_janela = []
+    for i in range(1, janela_meses + 1):
+        mes = mes_atual - i
+        ano = ano_ref
+        while mes <= 0:
+            mes += 12
+            ano -= 1
+        meses_janela.append((ano, mes))
+    cond_janela = pd.Series(False, index=df_historico.index)
+    for a, m in meses_janela:
+        cond_janela |= (df_historico['Ano'] == a) & (df_historico['Mês'] == m)
+    df_historico_janela = df_historico[cond_janela]
+else:
+    df_historico_janela = df_historico
 
 # ============================================================
 # NAVEGAÇÃO
@@ -408,13 +272,11 @@ opcoes_paginas = [
 ]
 opcao = st.radio("Selecione a página:", opcoes_paginas, horizontal=True, key='nav')
 
-# Rolar para o topo ao trocar de página
-st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
-
 # ============================================================
 # PÁGINA: VISÃO GERAL
 # ============================================================
 if opcao == "🏠 Visão Geral":
+    # Carteira Ativa
     carteira_ativa_total = df_historico_janela[df_historico_janela['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
     positivados_periodo = df_filtrado[df_filtrado['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
     pct_ativa = (positivados_periodo / carteira_ativa_total * 100) if carteira_ativa_total > 0 else 0
@@ -425,20 +287,19 @@ if opcao == "🏠 Visão Geral":
     col_a2.metric("Positivados no Mês", positivados_periodo)
     col_a3.metric("% Positivação (Ativa)", f"{pct_ativa:.1f}%")
 
+    # Gráfico mensal + YTD
+    df_mensal_ativos = df_historico[df_historico['Nome_Fabricante'].notna()]
+    mensal_pos = df_mensal_ativos.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
+    mensal_pos.columns = ['Mês', 'Clientes Positivados']
+
     if mes_selecionado != "Todos":
         mes_num = int(mes_selecionado.split(' - ')[0])
-        anos_do_mes = df_historico[df_historico['MŒs'] == mes_num]['Ano'].unique()
+        anos_do_mes = df_historico[df_historico['Mês'] == mes_num]['Ano'].unique()
         ano_ytd = max(anos_do_mes) if len(anos_do_mes) > 0 else df_historico['Ano'].max()
     else:
         ano_ytd = df_historico['Ano'].max()
-        mes_num = df_historico['MŒs'].max()
-
-    df_historico_ano = df_historico[df_historico['Ano'] == ano_ytd]
-    df_mensal_ativos = df_historico_ano[df_historico_ano['Nome_Fabricante'].notna()]
-    mensal_pos = df_mensal_ativos.groupby('MŒs_Ano')['codigo_cliente'].nunique().reset_index()
-    mensal_pos.columns = ['Mês', 'Clientes Positivados']
-
-    df_ytd = df_historico[(df_historico['Ano'] == ano_ytd) & (df_historico['MŒs'] <= mes_num)]
+        mes_num = df_historico['Mês'].max()
+    df_ytd = df_historico[(df_historico['Ano'] == ano_ytd) & (df_historico['Mês'] <= mes_num)]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
     chart_data = pd.DataFrame({
@@ -456,6 +317,7 @@ if opcao == "🏠 Visão Geral":
     fig.update_layout(title='Positivação Carteira Ativa (Mensal + YTD)', yaxis_title='Clientes Positivados')
     st.plotly_chart(fig, use_container_width=True)
 
+    # Carteira Total
     if vendedor_selecionado != "Todos":
         total_clientes_base = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].nunique()
     elif coordenador_selecionado != "Todos":
@@ -483,8 +345,7 @@ elif opcao == "👥 Performance Vendedor":
     if vendedor_selecionado != "Todos":
         df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'] == vendedor_selecionado]
     if pasta_selecionada != "Todas":
-        vendedores_da_pasta = [v for v in df_base_perf['nome_vendedor_base'].unique() 
-                               if vendedor_pasta.get(v) == pasta_selecionada]
+        vendedores_da_pasta = [v for v in df_base_perf['nome_vendedor_base'].unique() if vendedor_pasta.get(v) == pasta_selecionada]
         df_base_perf = df_base_perf[df_base_perf['nome_vendedor_base'].isin(vendedores_da_pasta)]
     if municipio_selecionado:
         df_base_perf = df_base_perf[df_base_perf['Municipio'].isin(municipio_selecionado)]
@@ -581,45 +442,22 @@ elif opcao == "🏷️ Positivação por Segmento":
     st.dataframe(df_seg, use_container_width=True, hide_index=True)
 
 # ============================================================
-# PÁGINA: OPORTUNIDADES CRUZADAS (COM PERÍODO)
+# PÁGINA: OPORTUNIDADES CRUZADAS
 # ============================================================
 elif opcao == "🔀 Oportunidades Cruzadas":
     st.subheader("🔀 Oportunidades Cruzadas")
 
-    # Seleção de período de análise
-    meses_oportunidades = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
-    if not meses_oportunidades:
-        st.warning("Nenhum dado disponível para análise.")
-        st.stop()
-
-    col_per1, col_per2 = st.columns(2)
-    with col_per1:
-        mes_op_inicio = st.selectbox("Mês início:", options=meses_oportunidades, index=0, key='mes_op_inicio')
-    with col_per2:
-        mes_op_fim = st.selectbox("Mês fim:", options=meses_oportunidades, index=len(meses_oportunidades)-1, key='mes_op_fim')
-
-    if mes_op_inicio > mes_op_fim:
-        st.warning("Mês início deve ser menor ou igual ao mês fim.")
-        st.stop()
-
-    # Filtrar dados pelo período selecionado
-    df_analise = df_relatorio_base[
-        (df_relatorio_base['MŒs_Ano'] >= mes_op_inicio) & 
-        (df_relatorio_base['MŒs_Ano'] <= mes_op_fim)
-    ].copy()
-
-    # Seleção das indústrias
     col_op1, col_op2 = st.columns(2)
     with col_op1:
         st.markdown("**Indústrias da Base (compradas)**")
-        base_op = st.multiselect("Selecione uma ou mais indústrias que o cliente comprou:", 
-                                 options=INDUSTRIAS_DISPONIVEIS, key='base_cruzada')
+        base_op = st.multiselect("Selecione uma ou mais indústrias que o cliente comprou:", options=INDUSTRIAS_DISPONIVEIS, key='base_cruzada')
     with col_op2:
         st.markdown("**Indústrias de Comparação (não compradas)**")
-        comp_op = st.multiselect("Selecione uma ou mais indústrias que o cliente NÃO comprou:", 
-                                 options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
+        comp_op = st.multiselect("Selecione uma ou mais indústrias que o cliente NÃO comprou:", options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
 
     if base_op and comp_op:
+        df_analise = df_filtrado.copy()
+
         base_sem_vendas = [ind for ind in base_op if df_analise[df_analise['Nome_Fabricante'] == ind].empty]
         if base_sem_vendas:
             st.warning(f"As seguintes indústrias da base não tiveram vendas no período selecionado: {', '.join(base_sem_vendas)}.")
@@ -628,18 +466,14 @@ elif opcao == "🔀 Oportunidades Cruzadas":
             clientes_base = set(df_analise[df_analise['Nome_Fabricante'] == base_op[0]]['codigo_cliente'].unique())
             for ind in base_op[1:]:
                 clientes_base &= set(df_analise[df_analise['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
-
             clientes_comp = set(df_analise['codigo_cliente'].unique())
             for ind in comp_op:
                 clientes_comp -= set(df_analise[df_analise['Nome_Fabricante'] == ind]['codigo_cliente'].unique())
-
             clientes_oportunidade = clientes_base.intersection(clientes_comp)
 
             if clientes_oportunidade:
                 st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram da(s) indústria(s) selecionada(s) e não compraram da(s) indústria(s) comparada(s).")
-                df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][
-                    ['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']
-                ]
+                df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']]
                 df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
                 st.dataframe(df_op, use_container_width=True, hide_index=True)
 
@@ -648,8 +482,7 @@ elif opcao == "🔀 Oportunidades Cruzadas":
                     df_op.to_excel(writer, index=False, sheet_name='Oportunidades')
                 st.download_button("📥 Baixar Excel (Oportunidades)", data=output_op.getvalue(),
                                    file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
-                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
-                                   use_container_width=True)
+                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
             else:
                 st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
     else:
@@ -666,17 +499,18 @@ elif opcao == "🟢 Softys Falcon":
 
         if mes_selecionado != "Todos":
             mes_num = int(mes_selecionado.split(' - ')[0])
-            anos_do_mes = df_softys[df_softys['MŒs'] == mes_num]['Ano'].unique()
+            anos_do_mes = df_softys[df_softys['Mês'] == mes_num]['Ano'].unique()
             ano_atual = max(anos_do_mes) if len(anos_do_mes) > 0 else df_softys['Ano'].max()
             mes_atual_num = mes_num
         else:
             ano_atual = df_softys['Ano'].max()
-            mes_atual_num = df_softys['MŒs'].max()
+            mes_atual_num = df_softys['Mês'].max()
 
         meses_ano = [f"{ano_atual}-{m:02d}" for m in range(1, mes_atual_num + 1)]
-        df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['MŒs'] <= mes_atual_num)]
+        df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['Mês'] <= mes_atual_num)]
 
-        monthly_totals = df_softys_ano.groupby('MŒs_Ano')['codigo_cliente'].nunique().reset_index()
+        # Gráfico mensal + YTD
+        monthly_totals = df_softys_ano.groupby('Mês_Ano')['codigo_cliente'].nunique().reset_index()
         monthly_totals.columns = ['Mês', 'Clientes']
         monthly_totals = monthly_totals[monthly_totals['Mês'].isin(meses_ano)]
 
@@ -697,8 +531,8 @@ elif opcao == "🟢 Softys Falcon":
         fig_softys.update_layout(title='Positivação Softys Falcon (Mensal + YTD)', yaxis_title='Clientes')
         st.plotly_chart(fig_softys, use_container_width=True)
 
-        pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='MŒs_Ano', 
-                                                  values='codigo_cliente', aggfunc='nunique', fill_value=0)
+        # Tabela mensal por categoria + YTD
+        pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='Mês_Ano', values='codigo_cliente', aggfunc='nunique', fill_value=0)
         pivot_mensal = pivot_mensal.reindex(columns=meses_ano, fill_value=0)
         ytd_series = df_softys_ano.groupby('Categoria')['codigo_cliente'].nunique()
         tabela = pivot_mensal.copy()
@@ -711,76 +545,53 @@ elif opcao == "🟢 Softys Falcon":
         st.markdown("**Positivação por Categoria (todos os meses do ano + YTD)**")
         st.dataframe(tabela, use_container_width=True, hide_index=True)
 
-        # Excel
+        # Downloads da tabela mensal
         output_mensal = BytesIO()
         with pd.ExcelWriter(output_mensal, engine='openpyxl') as writer:
             tabela.to_excel(writer, index=False, sheet_name='Softys Mensal')
         st.download_button("📥 Baixar Excel (Mensal)", data=output_mensal.getvalue(),
                            file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
-                           use_container_width=True)
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
 
-        # PDF
-        pdf_mensal = gerar_pdf_html(tabela, "Softys Falcon - Mensal + YTD")
-        if pdf_mensal:
-            st.download_button("📄 Baixar PDF (Mensal)", data=pdf_mensal,
-                               file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.pdf',
-                               mime='application/pdf', use_container_width=True)
+        html_mensal = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Softys Falcon - Mensal + YTD</h1>{tabela.to_html(index=False)}</body></html>"""
+        st.download_button("📥 Baixar PDF (Mensal)", data=html_mensal.encode('utf-8'),
+                           file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.html',
+                           mime='text/html', use_container_width=True)
 
+        # Batalha Naval Softys Falcon
         st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
-        df_softys_clientes = df_softys_ano[['codigo_cliente', 'nome_cliente', 'Municipio', 
-                                            'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
-        clientes_pivot = df_softys_clientes.pivot_table(
-            index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
-            columns='Categoria', aggfunc='size', fill_value=0
-        ).reset_index()
-        cat_cols = [c for c in clientes_pivot.columns if c not in ['codigo_cliente', 'nome_cliente', 
-                                                                    'Municipio', 'Cliente_Coligacao', 'nome_vendedor']]
+        df_softys_clientes = df_softys_ano[['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
+        clientes_pivot = df_softys_clientes.pivot_table(index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
+                                                        columns='Categoria', aggfunc='size', fill_value=0).reset_index()
+        cat_cols = [c for c in clientes_pivot.columns if c not in ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']]
         clientes_pivot[cat_cols] = (clientes_pivot[cat_cols] > 0).astype(int)
         clientes_pivot['Total'] = clientes_pivot[cat_cols].sum(axis=1)
 
         with st.expander("Visualizar Batalha Naval"):
             st.dataframe(clientes_pivot, use_container_width=True, hide_index=True)
 
-        # Excel BN
         output_bn = BytesIO()
         with pd.ExcelWriter(output_bn, engine='openpyxl') as writer:
             clientes_pivot.to_excel(writer, index=False, sheet_name='Batalha Naval Softys')
         st.download_button("📥 Baixar Excel (Batalha Naval)", data=output_bn.getvalue(),
                            file_name=f'batalha_naval_softys_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
-                           use_container_width=True)
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
 
-        # PDF BN
-        pdf_bn = gerar_pdf_html(clientes_pivot, "Batalha Naval Softys Falcon")
-        if pdf_bn:
-            st.download_button("📄 Baixar PDF (Batalha Naval)", data=pdf_bn,
-                               file_name=f'batalha_naval_softys_{datetime.now().strftime("%Y%m%d")}.pdf',
-                               mime='application/pdf', use_container_width=True)
+        html_bn = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Batalha Naval Softys Falcon</h1>{clientes_pivot.to_html(index=False)}</body></html>"""
+        st.download_button("📥 Baixar PDF (Batalha Naval)", data=html_bn.encode('utf-8'),
+                           file_name=f'batalha_naval_softys_{datetime.now().strftime("%Y%m%d")}.html',
+                           mime='text/html', use_container_width=True)
     else:
         st.warning("Nenhum dado da Softys Falcon para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: KENVUE PERFUMARIA (CORRIGIDA)
+# PÁGINA: KENVUE PERFUMARIA
 # ============================================================
 elif opcao == "🟠 Kenvue Perfumaria":
-    # Vendedores elegíveis para vender KENVUE (pasta amarela ou mista)
-    vendedores_kenvue = [v for v in df_base['nome_vendedor_base'].unique()
-                         if vendedor_pasta.get(v) in ['PA', 'PVA']]
-
-    # Perfumarias ativas na janela móvel atendidas por vendedores elegíveis
-    df_perfumarias_ativas = df_historico_janela[
-        (df_historico_janela['Canal'] == 'PERFUMARIA') &
-        (df_historico_janela['nome_vendedor'].isin(vendedores_kenvue))
-    ].copy()
+    df_perfumarias_ativas = df_historico_janela[df_historico_janela['Canal'] == 'PERFUMARIA'].copy()
 
     if not df_perfumarias_ativas.empty:
-        # Vendas de Kenvue no mês atual, apenas de vendedores elegíveis
-        df_kenvue_mes = df_filtrado[
-            (df_filtrado['Nome_Fabricante'] == 'KENVUE') &
-            (df_filtrado['Canal'] == 'PERFUMARIA') &
-            (df_filtrado['nome_vendedor'].isin(vendedores_kenvue))
-        ].copy()
+        df_kenvue_mes = df_filtrado[(df_filtrado['Nome_Fabricante'] == 'KENVUE') & (df_filtrado['Canal'] == 'PERFUMARIA')].copy()
 
         if not df_kenvue_mes.empty:
             clientes_kenvue_mes = df_kenvue_mes['codigo_cliente'].unique()
@@ -793,101 +604,64 @@ elif opcao == "🟠 Kenvue Perfumaria":
             st.metric("Atendidas com Kenvue (mês atual)", f"{atendidos} ({pct_atendido:.1f}%)")
             st.progress(min(pct_atendido / 100, 1.0), text="Meta: 50%")
 
-            # Clientes que ainda não foram atendidos com Kenvue no mês
-            clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique()
-                                      if c not in clientes_kenvue_mes]
-
-            # Mapear cliente -> vendedor responsável (PA/PVA)
-            df_base_kenvue = df_base[df_base['nome_vendedor_base'].isin(vendedores_kenvue)]
-            df_base_kenvue = df_base_kenvue.drop_duplicates(subset=['codigo_cliente'], keep='first')
+            clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique() if c not in clientes_kenvue_mes]
 
             col_ken1, col_ken2 = st.columns(2)
             with col_ken1:
                 st.markdown(f"✅ **Chegamos** ({atendidos})")
-                # Usar df_kenvue_mes (já tem o vendedor correto da venda)
-                df_chegamos = df_kenvue_mes[
-                    ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']
-                ].drop_duplicates()
+                df_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_kenvue_mes)][['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']]
                 df_chegamos.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_chegamos, use_container_width=True, hide_index=True)
 
-                # Excel
                 output_cheg = BytesIO()
                 with pd.ExcelWriter(output_cheg, engine='openpyxl') as writer:
                     df_chegamos.to_excel(writer, index=False, sheet_name='Chegamos')
                 st.download_button("📥 Baixar Excel (Chegamos)", data=output_cheg.getvalue(),
                                    file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                   use_container_width=True)
-
-                # PDF
-                pdf_cheg = gerar_pdf_html(df_chegamos, "Kenvue - Chegamos")
-                if pdf_cheg:
-                    st.download_button("📄 Baixar PDF (Chegamos)", data=pdf_cheg,
-                                       file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.pdf',
-                                       mime='application/pdf', use_container_width=True)
+                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+                html_cheg = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Kenvue - Chegamos</h1>{df_chegamos.to_html(index=False)}</body></html>"""
+                st.download_button("📥 Baixar PDF (Chegamos)", data=html_cheg.encode('utf-8'),
+                                   file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.html',
+                                   mime='text/html', use_container_width=True)
 
             with col_ken2:
                 st.markdown(f"❌ **Não chegamos** ({len(clientes_nao_atendidos)})")
-                # Usar base deduplicada de vendedores elegíveis
-                df_nao = df_base_kenvue[df_base_kenvue['codigo_cliente'].isin(clientes_nao_atendidos)][
-                    ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']
-                ]
+                df_nao = df_base[df_base['codigo_cliente'].isin(clientes_nao_atendidos)][['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']]
                 df_nao.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_nao, use_container_width=True, hide_index=True)
 
-                # Excel
                 output_nao = BytesIO()
                 with pd.ExcelWriter(output_nao, engine='openpyxl') as writer:
                     df_nao.to_excel(writer, index=False, sheet_name='Nao Chegamos')
                 st.download_button("📥 Baixar Excel (Não Chegamos)", data=output_nao.getvalue(),
                                    file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                   use_container_width=True)
+                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+                html_nao = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Kenvue - Não Chegamos</h1>{df_nao.to_html(index=False)}</body></html>"""
+                st.download_button("📥 Baixar PDF (Não Chegamos)", data=html_nao.encode('utf-8'),
+                                   file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.html',
+                                   mime='text/html', use_container_width=True)
 
-                # PDF
-                pdf_nao = gerar_pdf_html(df_nao, "Kenvue - Não Chegamos")
-                if pdf_nao:
-                    st.download_button("📄 Baixar PDF (Não Chegamos)", data=pdf_nao,
-                                       file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.pdf',
-                                       mime='application/pdf', use_container_width=True)
-
-            # Meta por vendedor (apenas vendedores elegíveis)
             st.markdown("**Meta por Vendedor (50% das perfumarias ativas)**")
-            vendedores_perf = df_perfumarias_ativas['nome_vendedor'].dropna().unique()
+            vendedores_perf = df_perfumarias_ativas['nome_vendedor_base'].dropna().unique()
             lista_ken = []
             for vend in vendedores_perf:
-                total_vend = df_perfumarias_ativas[df_perfumarias_ativas['nome_vendedor'] == vend]['codigo_cliente'].nunique()
+                total_vend = df_perfumarias_ativas[df_perfumarias_ativas['nome_vendedor_base'] == vend]['codigo_cliente'].nunique()
                 atend_vend = df_kenvue_mes[df_kenvue_mes['nome_vendedor'] == vend]['codigo_cliente'].nunique()
                 pct_vend = (atend_vend / total_vend * 100) if total_vend > 0 else 0
-                lista_ken.append({
-                    'Vendedor': vend,
-                    'Perfumarias Ativas': total_vend,
-                    'Atendidas Kenvue': atend_vend,
-                    '% Atendido': round(pct_vend, 1)
-                })
+                lista_ken.append({'Vendedor': vend, 'Perfumarias Ativas': total_vend, 'Atendidas Kenvue': atend_vend, '% Atendido': round(pct_vend, 1)})
             df_ken_vend = pd.DataFrame(lista_ken)
             st.dataframe(df_ken_vend, use_container_width=True, hide_index=True)
 
-            # Excel
             output_kenv = BytesIO()
             with pd.ExcelWriter(output_kenv, engine='openpyxl') as writer:
                 df_ken_vend.to_excel(writer, index=False, sheet_name='Meta Kenvue Vendedor')
             st.download_button("📥 Baixar Excel (Meta por Vendedor)", data=output_kenv.getvalue(),
                                file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                               use_container_width=True)
-
-            # PDF
-            pdf_kenv = gerar_pdf_html(df_ken_vend, "Meta Kenvue por Vendedor")
-            if pdf_kenv:
-                st.download_button("📄 Baixar PDF (Meta por Vendedor)", data=pdf_kenv,
-                                   file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.pdf',
-                                   mime='application/pdf', use_container_width=True)
+                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
         else:
             st.warning("Nenhuma venda de Kenvue no mês atual para o canal Perfumaria.")
     else:
-        st.warning("Nenhuma perfumaria ativa na janela móvel para os vendedores elegíveis (PA/PVA).")
+        st.warning("Nenhuma perfumaria ativa na janela móvel.")
 
 # ============================================================
 # PÁGINA: CENOURA & BRONZE
@@ -900,55 +674,61 @@ elif opcao == "🟤 Cenoura & Bronze":
 
         if mes_selecionado != "Todos":
             mes_num = int(mes_selecionado.split(' - ')[0])
-            anos_do_mes = df_cenoura[df_cenoura['MŒs'] == mes_num]['Ano'].unique()
+            anos_do_mes = df_cenoura[df_cenoura['Mês'] == mes_num]['Ano'].unique()
             ano_atual = max(anos_do_mes) if len(anos_do_mes) > 0 else df_cenoura['Ano'].max()
             mes_atual_num = mes_num
-            months_window = [f"{a}-{m:02d}" for a, m in calcular_janela_movel(df_cenoura, mes_selecionado, janela_meses)[['Ano', 'MŒs']].drop_duplicates().itertuples(index=False, name=None)]
+            months_window = [f"{a}-{m:02d}" for a, m in meses_janela]
             current_month_str = f"{ano_atual}-{mes_atual_num:02d}"
         else:
-            months_window = sorted(df_cenoura['MŒs_Ano'].unique())
+            months_window = sorted(df_cenoura['Mês_Ano'].unique())
             current_month_str = months_window[-1] if months_window else None
 
-        df_cenoura_window = df_cenoura[df_cenoura['MŒs_Ano'].isin(months_window)].copy()
-        df_cenoura_mes = df_cenoura[df_cenoura['MŒs_Ano'] == current_month_str].copy() if current_month_str else pd.DataFrame()
+        df_cenoura_window = df_cenoura[df_cenoura['Mês_Ano'].isin(months_window)].copy()
+        df_cenoura_mes = df_cenoura[df_cenoura['Mês_Ano'] == current_month_str].copy() if current_month_str else pd.DataFrame()
 
         vendedores_cen = df_cenoura['nome_vendedor'].dropna().unique()
         lista_cen = []
         for vend in vendedores_cen:
             df_vend_window = df_cenoura_window[df_cenoura_window['nome_vendedor'] == vend]
-            media_6m = df_vend_window.groupby('MŒs_Ano')['codigo_cliente'].nunique().mean() if not df_vend_window.empty else 0
+            media_6m = df_vend_window.groupby('Mês_Ano')['codigo_cliente'].nunique().mean() if not df_vend_window.empty else 0
             df_vend_mes = df_cenoura_mes[df_cenoura_mes['nome_vendedor'] == vend] if not df_cenoura_mes.empty else pd.DataFrame()
             clientes_mes = df_vend_mes['codigo_cliente'].nunique() if not df_vend_mes.empty else 0
             pct = (clientes_mes / media_6m * 100) if media_6m > 0 else 0
-            lista_cen.append({
-                'Vendedor': vend, 
-                'Média 6M': round(media_6m, 1), 
-                'Mês Atual': clientes_mes, 
-                '% Mês vs Média': round(pct, 1)
-            })
+            lista_cen.append({'Vendedor': vend, 'Média 6M': round(media_6m, 1), 'Mês Atual': clientes_mes, '% Mês vs Média': round(pct, 1)})
         df_cen_vend = pd.DataFrame(lista_cen)
 
-        fig_cen_media = px.bar(df_cen_vend, x='Vendedor', y='Média 6M', title='Média 6 meses', 
-                               text='Média 6M', color='Média 6M')
+        fig_cen_media = px.bar(df_cen_vend, x='Vendedor', y='Média 6M', title='Média 6 meses', text='Média 6M', color='Média 6M')
         st.plotly_chart(fig_cen_media, use_container_width=True)
 
-        fig_cen_mes = px.bar(df_cen_vend, x='Vendedor', y='Mês Atual', title='Mês Atual', 
-                             text='Mês Atual', color='Mês Atual')
+        fig_cen_mes = px.bar(df_cen_vend, x='Vendedor', y='Mês Atual', title='Mês Atual', text='Mês Atual', color='Mês Atual')
         st.plotly_chart(fig_cen_mes, use_container_width=True)
 
-        fig_cen_pct = px.bar(df_cen_vend, x='Vendedor', y='% Mês vs Média', title='% Mês vs Média 6M', 
-                             text='% Mês vs Média', color='% Mês vs Média')
-        st.plotly_chart(fig_cen_pct, use_container_width=True)
-
         st.dataframe(df_cen_vend, use_container_width=True, hide_index=True)
+
+        st.markdown("**Clientes atendidos nos 6 meses, mas não no mês atual**")
+        clientes_janela = df_cenoura_window['codigo_cliente'].unique()
+        clientes_mes = df_cenoura_mes['codigo_cliente'].unique() if not df_cenoura_mes.empty else []
+        clientes_ausentes = [c for c in clientes_janela if c not in clientes_mes]
+        if clientes_ausentes:
+            df_ausentes = df_base[df_base['codigo_cliente'].isin(clientes_ausentes)][['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']]
+            df_ausentes.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
+            st.dataframe(df_ausentes, use_container_width=True, hide_index=True)
+            output_aus = BytesIO()
+            with pd.ExcelWriter(output_aus, engine='openpyxl') as writer:
+                df_ausentes.to_excel(writer, index=False, sheet_name='Ausentes')
+            st.download_button("📥 Baixar Excel (Ausentes)", data=output_aus.getvalue(),
+                               file_name=f'cenoura_ausentes_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+        else:
+            st.info("Todos os clientes da janela compraram no mês atual.")
     else:
-        st.warning("Nenhum dado de Cenoura & Bronze para os filtros atuais.")
+        st.warning("Nenhum dado da Linha Cenoura & Bronze para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: BATALHA NAVAL (Geral) - COM INTERVALO DE MESES E CORREÇÕES
+# PÁGINA: RELATÓRIO BATALHA NAVAL
 # ============================================================
 elif opcao == "📋 Batalha Naval":
-    meses_batalha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
+    meses_batalha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
     if not meses_batalha:
         st.warning("Nenhum dado disponível para o relatório.")
         st.stop()
@@ -960,7 +740,7 @@ elif opcao == "📋 Batalha Naval":
         mes_bat_fim = st.selectbox("Mês fim:", options=meses_batalha, index=len(meses_batalha)-1, key='mes_bat_fim')
 
     if mes_bat_inicio <= mes_bat_fim:
-        df_relatorio = df_relatorio_base[(df_relatorio_base['MŒs_Ano'] >= mes_bat_inicio) & (df_relatorio_base['MŒs_Ano'] <= mes_bat_fim)]
+        df_relatorio = df_relatorio_base[(df_relatorio_base['Mês_Ano'] >= mes_bat_inicio) & (df_relatorio_base['Mês_Ano'] <= mes_bat_fim)]
     else:
         st.warning("Mês início deve ser menor ou igual ao mês fim.")
         st.stop()
@@ -977,19 +757,6 @@ elif opcao == "📋 Batalha Naval":
 
     st.metric("Total de Clientes no Relatório", len(matriz_bin))
 
-    # Estilizar cores (1 verde, 0 vermelho) para as colunas de indústrias
-    def color_bn(val):
-        if val == 1:
-            return 'background-color: #c6efce; color: #006100; font-weight: bold; text-align: center'
-        elif val == 0:
-            return 'background-color: #ffc7ce; color: #9c0006; font-weight: bold; text-align: center'
-        return ''
-
-    styled_bn = matriz_bin.style.map(color_bn, subset=colunas_fabricantes)
-
-    with st.expander("Visualizar tabela", expanded=False):
-        st.dataframe(styled_bn, use_container_width=True, hide_index=True, height=400)
-
     col1, col2 = st.columns(2)
     with col1:
         output = BytesIO()
@@ -999,17 +766,19 @@ elif opcao == "📋 Batalha Naval":
                            file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.xlsx',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
     with col2:
-        pdf_data = gerar_pdf_html(matriz_bin, "Relatório Batalha Naval")
-        if pdf_data:
-            st.download_button("📄 Baixar PDF", data=pdf_data,
-                               file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.pdf',
-                               mime='application/pdf', use_container_width=True)
+        html_pdf = f"""<html><head><meta charset="UTF-8"><style>body {{ font-family: Arial; margin:20px; }} table {{ border-collapse: collapse; width:100%; font-size:10px; }} th {{ background:#1a3a4a; color:white; padding:5px; }} td {{ border:1px solid #ddd; padding:4px; }}</style></head><body><h1>Relatório Batalha Naval</h1>{matriz_bin.to_html(index=False)}</body></html>"""
+        st.download_button("📥 Baixar PDF", data=html_pdf.encode('utf-8'),
+                           file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d")}.html',
+                           mime='text/html', use_container_width=True)
+
+    with st.expander("Visualizar tabela"):
+        st.dataframe(matriz_bin, use_container_width=True, hide_index=True)
 
 # ============================================================
-# PÁGINA: FICHA DO CLIENTE - COM INTERVALO DE MESES E CORES
+# PÁGINA: FICHA DO CLIENTE
 # ============================================================
 elif opcao == "🔍 Ficha do Cliente":
-    meses_ficha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
+    meses_ficha = sorted(df_relatorio_base['Mês_Ano'].dropna().unique())
     if not meses_ficha:
         st.warning("Nenhum dado disponível para a ficha.")
         st.stop()
@@ -1021,7 +790,7 @@ elif opcao == "🔍 Ficha do Cliente":
         mes_ficha_fim = st.selectbox("Mês fim:", options=meses_ficha, index=len(meses_ficha)-1, key='mes_ficha_fim')
 
     if mes_ficha_inicio <= mes_ficha_fim:
-        df_ficha = df_relatorio_base[(df_relatorio_base['MŒs_Ano'] >= mes_ficha_inicio) & (df_relatorio_base['MŒs_Ano'] <= mes_ficha_fim)]
+        df_ficha = df_relatorio_base[(df_relatorio_base['Mês_Ano'] >= mes_ficha_inicio) & (df_relatorio_base['Mês_Ano'] <= mes_ficha_fim)]
     else:
         st.warning("Mês início deve ser menor ou igual ao mês fim.")
         st.stop()
@@ -1039,42 +808,24 @@ elif opcao == "🔍 Ficha do Cliente":
             codigo = cliente_sel.split(' - ')[0].strip()
             df_cliente = df_ficha[df_ficha['codigo_cliente'].astype(str).str.strip() == codigo]
             if not df_cliente.empty:
-                # Tratamento de valores nulos
-                def valor_ou_vazio(v):
-                    if pd.isna(v) or v == '':
-                        return ''
-                    return v
-
                 st.write(f"**Código:** {codigo}")
-                st.write(f"**Nome:** {valor_ou_vazio(df_cliente['nome_cliente'].iloc[0])}")
-                st.write(f"**Coligação:** {valor_ou_vazio(df_cliente['Cliente_Coligacao'].iloc[0])}")
-                st.write(f"**Vendedor:** {valor_ou_vazio(df_cliente['nome_vendedor'].iloc[0])}")
-                st.write(f"**Coordenador:** {valor_ou_vazio(df_cliente['Nome_Coordenador'].iloc[0])}")
+                st.write(f"**Nome:** {df_cliente['nome_cliente'].iloc[0]}")
+                st.write(f"**Coligação:** {df_cliente['Cliente_Coligacao'].iloc[0]}")
+                st.write(f"**Vendedor:** {df_cliente['nome_vendedor'].iloc[0]}")
+                st.write(f"**Coordenador:** {df_cliente['Nome_Coordenador'].iloc[0]}")
 
                 st.write("**Positivação por Indústria e Mês:**")
-                meses_disp = sorted(df_cliente['MŒs_Ano'].dropna().unique())
+                meses_disp = sorted(df_cliente['Mês_Ano'].dropna().unique())
                 if meses_disp:
-                    industrias_para_tabela = INDUSTRIAS_PERMITIDAS if pasta_selecionada != "Todas" else TODAS_INDUSTRIAS
                     tabela = []
-                    for ind in industrias_para_tabela:
+                    for ind in (INDUSTRIAS_PERMITIDAS if pasta_selecionada != "Todas" else TODAS_INDUSTRIAS):
                         linha = {'Indústria': ind}
                         for m in meses_disp:
-                            venda = ((df_cliente['Nome_Fabricante'] == ind) & (df_cliente['MŒs_Ano'] == m)).any()
-                            linha[m] = 1 if venda else 0
-                        linha['Total'] = sum(1 for m in meses_disp if linha[m] == 1)
+                            linha[m] = '✅' if ((df_cliente['Nome_Fabricante'] == ind) & (df_cliente['Mês_Ano'] == m)).any() else '❌'
+                        linha['Total'] = sum(1 for m in meses_disp if linha[m] == '✅')
                         tabela.append(linha)
                     df_tab = pd.DataFrame(tabela)
-
-                    # Estilizar cores
-                    def color_ficha(val):
-                        if val == 1:
-                            return 'background-color: #c6efce; color: #006100; font-weight: bold; text-align: center'
-                        elif val == 0:
-                            return 'background-color: #ffc7ce; color: #9c0006; font-weight: bold; text-align: center'
-                        return ''
-
-                    styled_ficha = df_tab.style.map(color_ficha, subset=meses_disp)
-                    st.dataframe(styled_ficha, use_container_width=True, hide_index=True, height=400)
+                    st.dataframe(df_tab, use_container_width=True, hide_index=True)
 
                     output_ficha = BytesIO()
                     with pd.ExcelWriter(output_ficha, engine='openpyxl') as writer:
@@ -1082,8 +833,6 @@ elif opcao == "🔍 Ficha do Cliente":
                     st.download_button("📥 Baixar Excel (Ficha)", data=output_ficha.getvalue(),
                                        file_name=f'ficha_cliente_{codigo}_{datetime.now().strftime("%Y%m%d")}.xlsx',
                                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
-                else:
-                    st.info("Nenhum mês com vendas para este cliente no período selecionado.")
             else:
                 st.warning("Cliente não encontrado.")
     else:
