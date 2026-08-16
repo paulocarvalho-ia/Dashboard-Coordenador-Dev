@@ -928,14 +928,34 @@ elif opcao == "🟤 Cenoura & Bronze":
         st.warning("Nenhum dado de Cenoura & Bronze para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: BATALHA NAVAL (Geral)
+# PÁGINA: BATALHA NAVAL (Geral) - CORRIGIDA
 # ============================================================
 elif opcao == "📋 Batalha Naval":
     st.subheader("📋 Batalha Naval — Matriz Cliente × Indústria")
 
-    if not df_filtrado.empty:
-        df_bn = df_filtrado[['codigo_cliente', 'nome_cliente', 'Municipio', 
-                             'Cliente_Coligacao', 'nome_vendedor', 'Nome_Fabricante']].drop_duplicates()
+    # Determinar mês de referência (sempre o mês selecionado, ou o último mês disponível)
+    if mes_selecionado != "Todos":
+        mes_num = int(mes_selecionado.split(' - ')[0])
+        anos_do_mes = df_historico[df_historico['MŒs'] == mes_num]['Ano'].unique()
+        ano_ref = max(anos_do_mes) if len(anos_do_mes) > 0 else df_historico['Ano'].max()
+        mes_ano_ref = f"{ano_ref}-{mes_num:02d}"
+    else:
+        # Usar o último mês disponível nos dados (sem filtro de mês)
+        if not df_historico.empty:
+            ultimo_periodo = df_historico['MŒs_Ano'].max()
+            mes_ano_ref = ultimo_periodo
+        else:
+            st.info("Nenhum dado disponível para Batalha Naval.")
+            st.stop()
+
+    # Filtrar somente o mês de referência
+    df_bn_mes = df_historico[df_historico['MŒs_Ano'] == mes_ano_ref].copy()
+
+    if df_bn_mes.empty:
+        st.info(f"Nenhum dado para o mês {mes_ano_ref}.")
+    else:
+        df_bn = df_bn_mes[['codigo_cliente', 'nome_cliente', 'Municipio', 
+                           'Cliente_Coligacao', 'nome_vendedor', 'Nome_Fabricante']].drop_duplicates()
 
         pivot_bn = df_bn.pivot_table(
             index=['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor'],
@@ -944,12 +964,13 @@ elif opcao == "📋 Batalha Naval":
             fill_value=0
         ).reset_index()
 
+        # Identificar colunas de indústrias
         ind_cols = [c for c in pivot_bn.columns if c not in ['codigo_cliente', 'nome_cliente', 
                                                               'Municipio', 'Cliente_Coligacao', 'nome_vendedor']]
         pivot_bn[ind_cols] = (pivot_bn[ind_cols] > 0).astype(int)
         pivot_bn['Total_Ind'] = pivot_bn[ind_cols].sum(axis=1)
 
-        with st.expander("Visualizar Batalha Naval"):
+        with st.expander("Visualizar Batalha Naval (clientes × indústrias)", expanded=True):
             st.dataframe(pivot_bn, use_container_width=True, hide_index=True)
 
         # Excel
@@ -957,61 +978,131 @@ elif opcao == "📋 Batalha Naval":
         with pd.ExcelWriter(output_bn, engine='openpyxl') as writer:
             pivot_bn.to_excel(writer, index=False, sheet_name='Batalha Naval')
         st.download_button("📥 Baixar Excel (Batalha Naval)", data=output_bn.getvalue(),
-                           file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
+                           file_name=f'batalha_naval_{mes_ano_ref}.xlsx',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
                            use_container_width=True)
 
         # PDF
-        pdf_bn = gerar_pdf_html(pivot_bn, "Batalha Naval - Cliente × Indústria")
+        pdf_bn = gerar_pdf_html(pivot_bn, f"Batalha Naval - Cliente × Indústria ({mes_ano_ref})")
         if pdf_bn:
             st.download_button("📄 Baixar PDF (Batalha Naval)", data=pdf_bn,
-                               file_name=f'batalha_naval_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf',
+                               file_name=f'batalha_naval_{mes_ano_ref}.pdf',
                                mime='application/pdf', use_container_width=True)
-    else:
-        st.info("Nenhum dado para exibir a Batalha Naval com os filtros atuais.")
 
 # ============================================================
-# PÁGINA: FICHA DO CLIENTE
+# PÁGINA: FICHA DO CLIENTE - NOVA VERSÃO
 # ============================================================
 elif opcao == "🔍 Ficha do Cliente":
     st.subheader("🔍 Ficha do Cliente")
 
-    clientes_disponiveis = sorted(df_filtrado['nome_cliente'].dropna().unique().tolist())
+    # Usar df_historico (sem filtro de mês) para listar todos os clientes
+    clientes_disponiveis = sorted(df_historico['nome_cliente'].dropna().unique().tolist())
 
     if clientes_disponiveis:
         cliente_selecionado = st.selectbox("Selecione um cliente:", clientes_disponiveis, key='ficha_cliente')
 
         if cliente_selecionado:
-            df_cliente = df_filtrado[df_filtrado['nome_cliente'] == cliente_selecionado].copy()
+            # Obter todos os dados do cliente (histórico completo, mas com outros filtros aplicados)
+            df_cliente_hist = df_historico[df_historico['nome_cliente'] == cliente_selecionado].copy()
 
-            if not df_cliente.empty:
-                col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    st.markdown("**Dados Cadastrais**")
-                    codigo = df_cliente['codigo_cliente'].iloc[0]
-                    coligacao = df_cliente['Cliente_Coligacao'].iloc[0]
-                    municipio = df_cliente['Municipio'].iloc[0]
-                    canal = df_cliente['Canal'].iloc[0]
-                    segmento = df_cliente['Segmento'].iloc[0]
-                    st.write(f"Código: {codigo}")
-                    st.write(f"Coligação: {coligacao}")
-                    st.write(f"Município: {municipio}")
-                    st.write(f"Canal: {canal}")
-                    st.write(f"Segmento: {segmento}")
+            if not df_cliente_hist.empty:
+                # Seleção de intervalo de meses
+                meses_disponiveis_cliente = sorted(df_cliente_hist['MŒs_Ano'].unique())
+                if not meses_disponiveis_cliente:
+                    st.warning("Cliente sem histórico de compras.")
+                else:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        mes_inicial = st.selectbox("Mês Inicial", meses_disponiveis_cliente, index=0, key='mes_inicial_cliente')
+                    with col2:
+                        # Mês final: padrão para o último mês
+                        mes_final = st.selectbox("Mês Final", meses_disponiveis_cliente, index=len(meses_disponiveis_cliente)-1, key='mes_final_cliente')
 
-                with col_f2:
-                    st.markdown("**Performance no Período**")
-                    total_pedidos = len(df_cliente)
-                    ind_compradas = df_cliente['Nome_Fabricante'].nunique()
-                    categorias = df_cliente['Categoria'].nunique()
-                    st.write(f"Total de Pedidos: {total_pedidos}")
-                    st.write(f"Indústrias Compradas: {ind_compradas}")
-                    st.write(f"Categorias: {categorias}")
+                    # Garantir que mes_inicial <= mes_final
+                    if mes_inicial > mes_final:
+                        st.error("Mês inicial não pode ser posterior ao mês final.")
+                    else:
+                        # Filtrar dados do cliente para o intervalo
+                        df_cliente_periodo = df_cliente_hist[
+                            (df_cliente_hist['MŒs_Ano'] >= mes_inicial) & 
+                            (df_cliente_hist['MŒs_Ano'] <= mes_final)
+                        ].copy()
 
-                st.markdown("**Histórico de Compras**")
-                df_hist = df_cliente.groupby(['MŒs_Ano', 'Nome_Fabricante'])['codigo_cliente'].count().reset_index()
-                df_hist.columns = ['Mês', 'Indústria', 'Pedidos']
-                st.dataframe(df_hist, use_container_width=True, hide_index=True)
+                        # Dados cadastrais (tratando nulos)
+                        def valor_ou_vazio(valor):
+                            if pd.isna(valor) or valor == '':
+                                return ''
+                            return valor
+
+                        col_f1, col_f2 = st.columns(2)
+                        with col_f1:
+                            st.markdown("**Dados Cadastrais**")
+                            codigo = valor_ou_vazio(df_cliente_periodo['codigo_cliente'].iloc[0])
+                            coligacao = valor_ou_vazio(df_cliente_periodo['Cliente_Coligacao'].iloc[0])
+                            municipio = valor_ou_vazio(df_cliente_periodo['Municipio'].iloc[0])
+                            canal = valor_ou_vazio(df_cliente_periodo['Canal'].iloc[0])
+                            segmento = valor_ou_vazio(df_cliente_periodo['Segmento'].iloc[0])
+                            vendedor = valor_ou_vazio(df_cliente_periodo['nome_vendedor'].iloc[0])
+
+                            st.write(f"Código: {codigo}")
+                            st.write(f"Coligação: {coligacao}")
+                            st.write(f"Município: {municipio}")
+                            st.write(f"Canal: {canal}")
+                            st.write(f"Segmento: {segmento}")
+                            st.write(f"Vendedor: {vendedor}")
+
+                        with col_f2:
+                            st.markdown("**Performance no Período**")
+                            total_pedidos = len(df_cliente_periodo)
+                            ind_compradas = df_cliente_periodo['Nome_Fabricante'].nunique()
+                            categorias = df_cliente_periodo['Categoria'].nunique()
+                            st.write(f"Total de Pedidos: {total_pedidos}")
+                            st.write(f"Indústrias Compradas: {ind_compradas}")
+                            st.write(f"Categorias: {categorias}")
+
+                        # Criar matriz Indústrias × Meses
+                        st.markdown("**Matriz de Vendas por Indústria e Mês**")
+                        # Lista de indústrias presentes no período
+                        industrias_presentes = sorted(df_cliente_periodo['Nome_Fabricante'].dropna().unique())
+                        # Lista de meses no intervalo
+                        meses_intervalo = [m for m in meses_disponiveis_cliente if mes_inicial <= m <= mes_final]
+
+                        if not industrias_presentes:
+                            st.info("Nenhuma venda no período selecionado.")
+                        else:
+                            # Criar tabela pivô: indústria nas linhas, meses nas colunas
+                            df_matriz = df_cliente_periodo.pivot_table(
+                                index='Nome_Fabricante',
+                                columns='MŒs_Ano',
+                                values='codigo_cliente',
+                                aggfunc='count',
+                                fill_value=0
+                            )
+                            # Reindexar para incluir todos os meses do intervalo (mesmo sem venda)
+                            df_matriz = df_matriz.reindex(columns=meses_intervalo, fill_value=0)
+                            # Garantir que as linhas contenham todas as indústrias do cliente no período
+                            df_matriz = df_matriz.reindex(index=industrias_presentes, fill_value=0)
+
+                            # Binarizar: >0 vira 1, 0 permanece 0
+                            df_matriz_bin = (df_matriz > 0).astype(int)
+
+                            # Aplicar estilos de cor: 1 = verde, 0 = vermelho
+                            def color_cells(val):
+                                if val == 1:
+                                    return 'background-color: #c6efce; color: #006100; font-weight: bold; text-align: center'
+                                elif val == 0:
+                                    return 'background-color: #ffc7ce; color: #9c0006; font-weight: bold; text-align: center'
+                                return ''
+
+                            styled = df_matriz_bin.style.map(color_cells)
+
+                            st.dataframe(styled, use_container_width=True, hide_index=False)
+
+                        # Histórico detalhado de pedidos
+                        st.markdown("**Histórico de Compras Detalhado**")
+                        df_hist_det = df_cliente_periodo[['MŒs_Ano', 'Nome_Fabricante', 'Linha_Produto', 'Categoria', 'Valor_Vendas']].drop_duplicates()
+                        df_hist_det.columns = ['Mês', 'Indústria', 'Linha de Produto', 'Categoria', 'Valor Vendas']
+                        st.dataframe(df_hist_det, use_container_width=True, hide_index=True)
             else:
                 st.warning("Nenhum dado encontrado para este cliente.")
     else:
