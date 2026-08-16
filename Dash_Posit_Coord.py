@@ -50,24 +50,7 @@ def load_data():
 
     data_dados = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    # Normalizar BASE
-    df_base.columns = [str(col).strip() for col in df_base.columns]
-    df_base = df_base.rename(columns={
-        'CÓ³digo Cliente': 'codigo_cliente',
-        'Codigo Cliente': 'codigo_cliente',
-        'Cliente': 'nome_cliente',
-        'Vendedor': 'nome_vendedor_base',
-        'Coligaçª£o': 'Cliente_Coligacao',
-        'Coordenador': 'Nome_Coordenador',
-        'Municipio': 'Municipio',
-        'Canal': 'Canal',
-        'Segmento': 'Segmento'
-    })
-
-    # Normalizar BI_Teste (com detecção robusta de colunas)
-    df_bi.columns = [str(col).strip() for col in df_bi.columns]
-    bi_rename = {}
-
+    # Função para normalizar texto (remove acentos, caracteres especiais)
     def normalizar_texto(texto):
         """Remove acentos, caracteres especiais e transforma em minúsculas."""
         texto = unicodedata.normalize('NFKD', texto)
@@ -75,6 +58,48 @@ def load_data():
         texto = texto.lower().strip()
         texto = re.sub(r'\s+', ' ', texto)
         return texto
+
+    # ============================================================
+    # NORMALIZAR DF_BASE (com detecção robusta)
+    # ============================================================
+    df_base.columns = [str(col).strip() for col in df_base.columns]
+    base_rename = {}
+
+    for col in df_base.columns:
+        col_norm = normalizar_texto(col)
+        if 'codigo cliente' in col_norm or 'codigo' in col_norm and 'cliente' in col_norm:
+            base_rename[col] = 'codigo_cliente'
+        elif 'cliente' in col_norm and 'nome' in col_norm:
+            base_rename[col] = 'nome_cliente'
+        elif 'vendedor' in col_norm:
+            base_rename[col] = 'nome_vendedor_base'
+        elif 'coligacao' in col_norm or 'coliga' in col_norm:
+            base_rename[col] = 'Cliente_Coligacao'
+        elif 'coordenador' in col_norm:
+            base_rename[col] = 'Nome_Coordenador'
+        elif 'municipio' in col_norm:
+            base_rename[col] = 'Municipio'
+        elif 'canal' in col_norm:
+            base_rename[col] = 'Canal'
+        elif 'segmento' in col_norm:
+            base_rename[col] = 'Segmento'
+
+    df_base = df_base.rename(columns=base_rename)
+
+    # Verificar se colunas essenciais existem
+    required_base_cols = ['codigo_cliente', 'nome_cliente', 'nome_vendedor_base',
+                          'Cliente_Coligacao', 'Nome_Coordenador', 'Municipio', 'Canal', 'Segmento']
+    missing_base = [col for col in required_base_cols if col not in df_base.columns]
+    if missing_base:
+        st.error(f"Colunas essenciais não encontradas no DataFrame BASE: {missing_base}")
+        st.write("Colunas disponíveis:", df_base.columns.tolist())
+        st.stop()
+
+    # ============================================================
+    # NORMALIZAR DF_BI (com detecção robusta)
+    # ============================================================
+    df_bi.columns = [str(col).strip() for col in df_bi.columns]
+    bi_rename = {}
 
     for col in df_bi.columns:
         col_norm = normalizar_texto(col)
@@ -113,7 +138,9 @@ def load_data():
     df_bi['Ano'] = df_bi['Data'].dt.year
     df_bi['MŒs_Ano'] = df_bi['Data'].dt.to_period('M').astype(str)
 
-    # Merge SEGURO por codigo_cliente (evitar duplicação)
+    # ============================================================
+    # MERGE
+    # ============================================================
     df_base_dedup = df_base.drop_duplicates(subset=['codigo_cliente'], keep='first')
 
     # Merge principal (por cliente + vendedor)
@@ -139,6 +166,7 @@ def load_data():
 
     return df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta
 
+# Carregar dados
 df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta = load_data()
 
 TODAS_INDUSTRIAS = sorted([i for i in df_bi['Nome_Fabricante'].dropna().unique() if str(i).strip() != ''])
