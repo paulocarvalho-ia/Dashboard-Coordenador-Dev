@@ -338,7 +338,7 @@ with st.expander("🎯 Filtros", expanded=True):
             coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_vendedor)]['Cliente_Coligacao'].dropna().unique()
         elif coordenador_selecionado != "Todos":
             vendedores_do_coord = df_base[df_base['Nome_Coordenador'] == coordenador_selecionado]['nome_vendedor_base'].unique()
-            clientes_do_coord = df_base[df_base['codigo_cliente'].isin(vendedores_do_coord)]['codigo_cliente'].unique()
+            clientes_do_coord = df_base[df_base['nome_vendedor_base'].isin(vendedores_do_coord)]['codigo_cliente'].unique()
             coligacoes_filtradas = df_base[df_base['codigo_cliente'].isin(clientes_do_coord)]['Cliente_Coligacao'].dropna().unique()
         else:
             coligacoes_filtradas = df_base['Cliente_Coligacao'].dropna().unique()
@@ -457,7 +457,7 @@ if opcao == "🏠 Visão Geral":
         total_clientes_base = df_base[df_base['nome_vendedor_base'] == vendedor_selecionado]['codigo_cliente'].nunique()
     elif coordenador_selecionado != "Todos":
         vendedores_do_coord = df_base[df_base['Nome_Coordenador'] == coordenador_selecionado]['nome_vendedor_base'].unique()
-        total_clientes_base = df_base[df_base['codigo_cliente'].isin(vendedores_do_coord)]['codigo_cliente'].nunique()
+        total_clientes_base = df_base[df_base['nome_vendedor_base'].isin(vendedores_do_coord)]['codigo_cliente'].nunique()
     else:
         total_clientes_base = df_base['codigo_cliente'].nunique()
 
@@ -744,14 +744,26 @@ elif opcao == "🟢 Softys Falcon":
         st.warning("Nenhum dado da Softys Falcon para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: KENVUE PERFUMARIA
+# PÁGINA: KENVUE PERFUMARIA (CORRIGIDA)
 # ============================================================
 elif opcao == "🟠 Kenvue Perfumaria":
-    df_perfumarias_ativas = df_historico_janela[df_historico_janela['Canal'] == 'PERFUMARIA'].copy()
+    # Vendedores elegíveis para vender KENVUE (pasta amarela ou mista)
+    vendedores_kenvue = [v for v in df_base['nome_vendedor_base'].unique()
+                         if vendedor_pasta.get(v) in ['PA', 'PVA']]
+
+    # Perfumarias ativas na janela móvel atendidas por vendedores elegíveis
+    df_perfumarias_ativas = df_historico_janela[
+        (df_historico_janela['Canal'] == 'PERFUMARIA') &
+        (df_historico_janela['nome_vendedor'].isin(vendedores_kenvue))
+    ].copy()
 
     if not df_perfumarias_ativas.empty:
-        df_kenvue_mes = df_filtrado[(df_filtrado['Nome_Fabricante'] == 'KENVUE') & 
-                                     (df_filtrado['Canal'] == 'PERFUMARIA')].copy()
+        # Vendas de Kenvue no mês atual, apenas de vendedores elegíveis
+        df_kenvue_mes = df_filtrado[
+            (df_filtrado['Nome_Fabricante'] == 'KENVUE') &
+            (df_filtrado['Canal'] == 'PERFUMARIA') &
+            (df_filtrado['nome_vendedor'].isin(vendedores_kenvue))
+        ].copy()
 
         if not df_kenvue_mes.empty:
             clientes_kenvue_mes = df_kenvue_mes['codigo_cliente'].unique()
@@ -764,15 +776,21 @@ elif opcao == "🟠 Kenvue Perfumaria":
             st.metric("Atendidas com Kenvue (mês atual)", f"{atendidos} ({pct_atendido:.1f}%)")
             st.progress(min(pct_atendido / 100, 1.0), text="Meta: 50%")
 
-            clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique() 
+            # Clientes que ainda não foram atendidos com Kenvue no mês
+            clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique()
                                       if c not in clientes_kenvue_mes]
+
+            # Mapear cliente -> vendedor responsável (PA/PVA)
+            df_base_kenvue = df_base[df_base['nome_vendedor_base'].isin(vendedores_kenvue)]
+            df_base_kenvue = df_base_kenvue.drop_duplicates(subset=['codigo_cliente'], keep='first')
 
             col_ken1, col_ken2 = st.columns(2)
             with col_ken1:
                 st.markdown(f"✅ **Chegamos** ({atendidos})")
-                df_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_kenvue_mes)][
-                    ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']
-                ]
+                # Usar df_kenvue_mes (já tem o vendedor correto da venda)
+                df_chegamos = df_kenvue_mes[
+                    ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor']
+                ].drop_duplicates()
                 df_chegamos.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_chegamos, use_container_width=True, hide_index=True)
 
@@ -782,7 +800,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
                     df_chegamos.to_excel(writer, index=False, sheet_name='Chegamos')
                 st.download_button("📥 Baixar Excel (Chegamos)", data=output_cheg.getvalue(),
                                    file_name=f'kenvue_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                    use_container_width=True)
 
                 # PDF
@@ -794,7 +812,8 @@ elif opcao == "🟠 Kenvue Perfumaria":
 
             with col_ken2:
                 st.markdown(f"❌ **Não chegamos** ({len(clientes_nao_atendidos)})")
-                df_nao = df_base[df_base['codigo_cliente'].isin(clientes_nao_atendidos)][
+                # Usar base deduplicada de vendedores elegíveis
+                df_nao = df_base_kenvue[df_base_kenvue['codigo_cliente'].isin(clientes_nao_atendidos)][
                     ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']
                 ]
                 df_nao.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
@@ -806,7 +825,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
                     df_nao.to_excel(writer, index=False, sheet_name='Nao Chegamos')
                 st.download_button("📥 Baixar Excel (Não Chegamos)", data=output_nao.getvalue(),
                                    file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                                   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                    use_container_width=True)
 
                 # PDF
@@ -816,6 +835,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
                                        file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.pdf',
                                        mime='application/pdf', use_container_width=True)
 
+            # Meta por vendedor (apenas vendedores elegíveis)
             st.markdown("**Meta por Vendedor (50% das perfumarias ativas)**")
             vendedores_perf = df_perfumarias_ativas['nome_vendedor'].dropna().unique()
             lista_ken = []
@@ -824,9 +844,9 @@ elif opcao == "🟠 Kenvue Perfumaria":
                 atend_vend = df_kenvue_mes[df_kenvue_mes['nome_vendedor'] == vend]['codigo_cliente'].nunique()
                 pct_vend = (atend_vend / total_vend * 100) if total_vend > 0 else 0
                 lista_ken.append({
-                    'Vendedor': vend, 
-                    'Perfumarias Ativas': total_vend, 
-                    'Atendidas Kenvue': atend_vend, 
+                    'Vendedor': vend,
+                    'Perfumarias Ativas': total_vend,
+                    'Atendidas Kenvue': atend_vend,
                     '% Atendido': round(pct_vend, 1)
                 })
             df_ken_vend = pd.DataFrame(lista_ken)
@@ -838,7 +858,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
                 df_ken_vend.to_excel(writer, index=False, sheet_name='Meta Kenvue Vendedor')
             st.download_button("📥 Baixar Excel (Meta por Vendedor)", data=output_kenv.getvalue(),
                                file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                               mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                use_container_width=True)
 
             # PDF
@@ -850,7 +870,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
         else:
             st.warning("Nenhuma venda de Kenvue no mês atual para o canal Perfumaria.")
     else:
-        st.warning("Nenhuma perfumaria ativa na janela móvel.")
+        st.warning("Nenhuma perfumaria ativa na janela móvel para os vendedores elegíveis (PA/PVA).")
 
 # ============================================================
 # PÁGINA: CENOURA & BRONZE
@@ -866,7 +886,6 @@ elif opcao == "🟤 Cenoura & Bronze":
             anos_do_mes = df_cenoura[df_cenoura['MŒs'] == mes_num]['Ano'].unique()
             ano_atual = max(anos_do_mes) if len(anos_do_mes) > 0 else df_cenoura['Ano'].max()
             mes_atual_num = mes_num
-            # Corrigido: usar 'MŒs' em vez de 'Mês'
             months_window = [f"{a}-{m:02d}" for a, m in calcular_janela_movel(df_cenoura, mes_selecionado, janela_meses)[['Ano', 'MŒs']].drop_duplicates().itertuples(index=False, name=None)]
             current_month_str = f"{ano_atual}-{mes_atual_num:02d}"
         else:
