@@ -50,7 +50,6 @@ def load_data():
 
     data_dados = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    # Função para normalizar texto (remove acentos, caracteres especiais)
     def normalizar_texto(texto):
         """Remove acentos, caracteres especiais e transforma em minúsculas."""
         texto = unicodedata.normalize('NFKD', texto)
@@ -67,9 +66,9 @@ def load_data():
 
     for col in df_base.columns:
         col_norm = normalizar_texto(col)
-        if 'codigo cliente' in col_norm or 'codigo' in col_norm and 'cliente' in col_norm:
+        if 'codigo cliente' in col_norm or ('codigo' in col_norm and 'cliente' in col_norm):
             base_rename[col] = 'codigo_cliente'
-        elif 'cliente' in col_norm and 'nome' in col_norm:
+        elif col_norm == 'cliente' or ('cliente' in col_norm and 'nome' in col_norm):
             base_rename[col] = 'nome_cliente'
         elif 'vendedor' in col_norm:
             base_rename[col] = 'nome_vendedor_base'
@@ -85,6 +84,13 @@ def load_data():
             base_rename[col] = 'Segmento'
 
     df_base = df_base.rename(columns=base_rename)
+
+    # Fallback: se 'nome_cliente' ainda não existir, procurar coluna 'Cliente' original
+    if 'nome_cliente' not in df_base.columns:
+        for col in df_base.columns:
+            if normalizar_texto(col) == 'cliente':
+                df_base.rename(columns={col: 'nome_cliente'}, inplace=True)
+                break
 
     # Verificar se colunas essenciais existem
     required_base_cols = ['codigo_cliente', 'nome_cliente', 'nome_vendedor_base',
