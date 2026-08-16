@@ -371,7 +371,7 @@ df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janela_meses)
 
 # ============================================================
-# NAVEGAÇÃO ORGANIZADA (BOTÕES ALINHADOS EM LINHAS)
+# NAVEGAÇÃO ORGANIZADA (BOTÕES SIMÉTRICOS E DE MESMO TAMANHO)
 # ============================================================
 st.markdown("---")
 st.markdown("### 🧭 Navegação de Módulos")
@@ -395,19 +395,21 @@ opcoes_linha_2 = [
 if 'nav' not in st.session_state:
     st.session_state['nav'] = "🏠 Visão Geral"
 
-col_nav_a = st.columns(len(opcoes_linha_1))
+# Garantindo colunas proporcionais idênticas para a Linha 1 (5 colunas)
+cols_1 = st.columns(len(opcoes_linha_1))
 for i, nome_op in enumerate(opcoes_linha_1):
-    with col_nav_a[i]:
+    with cols_1[i]:
         tipo_botao = "primary" if st.session_state['nav'] == nome_op else "secondary"
-        if st.button(nome_op, use_container_width=True, type=tipo_botao):
+        if st.button(nome_op, use_container_width=True, type=tipo_botao, key=f"btn_l1_{i}"):
             st.session_state['nav'] = nome_op
             st.rerun()
 
-col_nav_b = st.columns(len(opcoes_linha_2))
+# Garantindo colunas proporcionais idênticas para a Linha 2 (5 colunas)
+cols_2 = st.columns(len(opcoes_linha_2))
 for i, nome_op in enumerate(opcoes_linha_2):
-    with col_nav_b[i]:
+    with cols_2[i]:
         tipo_botao = "primary" if st.session_state['nav'] == nome_op else "secondary"
-        if st.button(nome_op, use_container_width=True, type=tipo_botao):
+        if st.button(nome_op, use_container_width=True, type=tipo_botao, key=f"btn_l2_{i}"):
             st.session_state['nav'] = nome_op
             st.rerun()
 
