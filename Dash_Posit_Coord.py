@@ -23,6 +23,14 @@ st.markdown("""
 <style>
     a[href*="/edit"] { display: none !important; }
     a[href*="github.com"] { display: none !important; }
+    .stButton > button {
+        width: 100%;
+        height: 100%;
+        min-height: 50px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -180,6 +188,16 @@ TODAS_INDUSTRIAS = sorted([i for i in df_bi['Nome_Fabricante'].dropna().unique()
 # ============================================================
 # FUNÇÕES AUXILIARES
 # ============================================================
+def formatar_mes_rotulo(periodo_str):
+    """Converte 'YYYY-MM' para 'MMM/YY' em português."""
+    try:
+        ano, mes = periodo_str.split('-')
+        meses = {1:'Jan', 2:'Fev', 3:'Mar', 4:'Abr', 5:'Mai', 6:'Jun',
+                 7:'Jul', 8:'Ago', 9:'Set', 10:'Out', 11:'Nov', 12:'Dez'}
+        return f"{meses[int(mes)]}/{ano[2:]}"
+    except:
+        return periodo_str
+
 def gerar_pdf_html(tabela_df, titulo):
     """Gera PDF a partir de DataFrame usando HTML + CSS"""
     try:
@@ -391,7 +409,7 @@ df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janela_meses)
 
 # ============================================================
-# NAVEGAÇÃO
+# NAVEGAÇÃO POR BOTÕES
 # ============================================================
 st.markdown("---")
 opcoes_paginas = [
@@ -406,7 +424,21 @@ opcoes_paginas = [
     "📋 Batalha Naval",
     "🔍 Ficha do Cliente"
 ]
-opcao = st.radio("Selecione a página:", opcoes_paginas, horizontal=True, key='nav')
+
+# Inicializar página selecionada
+if 'pagina_selecionada' not in st.session_state:
+    st.session_state['pagina_selecionada'] = opcoes_paginas[0]
+
+# Criar botões em duas linhas de 5 colunas
+linhas = [opcoes_paginas[i:i+5] for i in range(0, len(opcoes_paginas), 5)]
+for linha in linhas:
+    cols = st.columns(len(linha))
+    for i, pagina in enumerate(linha):
+        with cols[i]:
+            if st.button(pagina, key=f'nav_btn_{pagina}', use_container_width=True):
+                st.session_state['pagina_selecionada'] = pagina
+
+opcao = st.session_state['pagina_selecionada']
 
 # Rolar para o topo ao trocar de página
 st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
@@ -446,26 +478,28 @@ if opcao == "🏠 Visão Geral":
         'Mês': list(mensal_pos['Mês']),
         'Clientes Positivados': list(mensal_pos['Clientes Positivados'])
     })
-    ytd_valor = ytd_total
+    df_meses['Rótulo'] = df_meses['Mês'].apply(formatar_mes_rotulo)
 
     fig = go.Figure()
 
     # Barras mensais (eixo esquerdo)
     fig.add_trace(go.Bar(
-        x=df_meses['Mês'],
+        x=df_meses['Rótulo'],
         y=df_meses['Clientes Positivados'],
         marker_color='#2E8B57',
         name='Mensal',
-        yaxis='y'
+        yaxis='y',
+        hovertemplate='Mês: %{x}<br>Clientes: %{y}'
     ))
 
     # Barra YTD (eixo direito)
     fig.add_trace(go.Bar(
         x=['YTD'],
-        y=[ytd_valor],
+        y=[ytd_total],
         marker_color='#1a3a4a',
         name='YTD',
-        yaxis='y2'
+        yaxis='y2',
+        hovertemplate='YTD<br>Clientes: %{y}'
     ))
 
     fig.update_layout(
@@ -705,26 +739,28 @@ elif opcao == "🟢 Softys Falcon":
 
         # Gráfico com eixo secundário para YTD
         df_mensal_softys = monthly_totals[['Mês', 'Clientes']].copy()
-        ytd_softys_valor = ytd_total
+        df_mensal_softys['Rótulo'] = df_mensal_softys['Mês'].apply(formatar_mes_rotulo)
 
         fig_softys = go.Figure()
 
         # Barras mensais (eixo esquerdo)
         fig_softys.add_trace(go.Bar(
-            x=df_mensal_softys['Mês'],
+            x=df_mensal_softys['Rótulo'],
             y=df_mensal_softys['Clientes'],
             marker_color='#2E8B57',
             name='Mensal',
-            yaxis='y'
+            yaxis='y',
+            hovertemplate='Mês: %{x}<br>Clientes: %{y}'
         ))
 
         # Barra YTD (eixo direito)
         fig_softys.add_trace(go.Bar(
             x=['YTD'],
-            y=[ytd_softys_valor],
+            y=[ytd_total],
             marker_color='#1a3a4a',
             name='YTD',
-            yaxis='y2'
+            yaxis='y2',
+            hovertemplate='YTD<br>Clientes: %{y}'
         ))
 
         fig_softys.update_layout(
@@ -736,6 +772,7 @@ elif opcao == "🟢 Softys Falcon":
         )
         st.plotly_chart(fig_softys, use_container_width=True)
 
+        # Tabela mensal por categoria
         pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='MŒs_Ano', 
                                                   values='codigo_cliente', aggfunc='nunique', fill_value=0)
         pivot_mensal = pivot_mensal.reindex(columns=meses_ano, fill_value=0)
@@ -744,7 +781,10 @@ elif opcao == "🟢 Softys Falcon":
         tabela['YTD'] = ytd_series
         tabela = tabela.reset_index().fillna(0)
 
-        ordered_cols = ['Categoria'] + meses_ano + ['YTD']
+        # Renomear colunas de meses para rótulos legíveis
+        rename_cols = {col: formatar_mes_rotulo(col) for col in meses_ano}
+        tabela.rename(columns=rename_cols, inplace=True)
+        ordered_cols = ['Categoria'] + list(rename_cols.values()) + ['YTD']
         tabela = tabela[ordered_cols]
 
         st.markdown("**Positivação por Categoria (todos os meses do ano + YTD)**")
@@ -766,6 +806,7 @@ elif opcao == "🟢 Softys Falcon":
                                file_name=f'softys_mensal_{datetime.now().strftime("%Y%m%d")}.pdf',
                                mime='application/pdf', use_container_width=True)
 
+        # Batalha Naval Softys
         st.markdown("**Batalha Naval Softys Falcon — Clientes que compraram**")
         df_softys_clientes = df_softys_ano[['codigo_cliente', 'nome_cliente', 'Municipio', 
                                             'Cliente_Coligacao', 'nome_vendedor', 'Categoria']].drop_duplicates()
@@ -778,8 +819,8 @@ elif opcao == "🟢 Softys Falcon":
         clientes_pivot[cat_cols] = (clientes_pivot[cat_cols] > 0).astype(int)
         clientes_pivot['Total'] = clientes_pivot[cat_cols].sum(axis=1)
 
-        with st.expander("Visualizar Batalha Naval"):
-            st.dataframe(clientes_pivot, use_container_width=True, hide_index=True)
+        with st.expander("Visualizar Batalha Naval", expanded=False):
+            st.dataframe(clientes_pivot, use_container_width=True, hide_index=True, height=400)
 
         # Excel BN
         output_bn = BytesIO()
@@ -984,7 +1025,7 @@ elif opcao == "🟤 Cenoura & Bronze":
         st.warning("Nenhum dado de Cenoura & Bronze para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: BATALHA NAVAL (Geral) - SEM YTD (conforme solicitado)
+# PÁGINA: BATALHA NAVAL (Geral)
 # ============================================================
 elif opcao == "📋 Batalha Naval":
     meses_batalha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
@@ -1016,7 +1057,7 @@ elif opcao == "📋 Batalha Naval":
 
     st.metric("Total de Clientes no Relatório", len(matriz_bin))
 
-    # Estilizar cores (1 verde, 0 vermelho) para as colunas de indústrias
+    # Estilizar cores (1 verde, 0 vermelho)
     def color_bn(val):
         if val == 1:
             return 'background-color: #c6efce; color: #006100; font-weight: bold; text-align: center'
@@ -1045,7 +1086,7 @@ elif opcao == "📋 Batalha Naval":
                                mime='application/pdf', use_container_width=True)
 
 # ============================================================
-# PÁGINA: FICHA DO CLIENTE - SEM YTD (conforme solicitado)
+# PÁGINA: FICHA DO CLIENTE
 # ============================================================
 elif opcao == "🔍 Ficha do Cliente":
     meses_ficha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
@@ -1104,6 +1145,13 @@ elif opcao == "🔍 Ficha do Cliente":
                         tabela.append(linha)
                     df_tab = pd.DataFrame(tabela)
 
+                    # Renomear colunas de meses
+                    rename_cols_ficha = {m: formatar_mes_rotulo(m) for m in meses_disp}
+                    df_tab.rename(columns=rename_cols_ficha, inplace=True)
+                    # Reordenar colunas: Indústria, rótulos de meses, Total
+                    colunas_finais = ['Indústria'] + list(rename_cols_ficha.values()) + ['Total']
+                    df_tab = df_tab[colunas_finais]
+
                     # Estilizar cores
                     def color_ficha(val):
                         if val == 1:
@@ -1112,7 +1160,7 @@ elif opcao == "🔍 Ficha do Cliente":
                             return 'background-color: #ffc7ce; color: #9c0006; font-weight: bold; text-align: center'
                         return ''
 
-                    styled_ficha = df_tab.style.map(color_ficha, subset=meses_disp)
+                    styled_ficha = df_tab.style.map(color_ficha, subset=list(rename_cols_ficha.values()))
                     st.dataframe(styled_ficha, use_container_width=True, hide_index=True, height=400)
 
                     output_ficha = BytesIO()
