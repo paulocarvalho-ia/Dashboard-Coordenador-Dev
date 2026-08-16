@@ -224,4 +224,97 @@ if opcao == "🏠 Visão Geral":
     # Preparar Dados do Gráfico
     labels = list(mensal['Mês']) + [f"YTD {ano_ref}"]
     valores = list(mensal['Clientes']) + [ytd_count]
-    cores = ['#2E8B57'] * len(mensal) + ['#EF8633'] # Verde pa
+    cores = ['#2E8B57'] * len(mensal) + ['#EF8633'] # Verde para meses, Laranja para YTD
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=valores,
+        marker_color=cores,
+        text=valores, textposition='auto'
+    ))
+    fig.update_layout(title=f"Positivação Mensal vs Acumulado YTD ({ano_ref})", xaxis_title="Período", yaxis_title="Clientes")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Carteira Total
+    st.markdown("---")
+    st.subheader("📋 Carteira Total")
+    # Lógica de cálculo da carteira total simplificada (baseada na sua original)
+    total_base = df_base['codigo_cliente'].nunique()
+    st.columns(3)[0].metric("Total Carteira", total_base)
+
+# ============================================================
+# PÁGINA: PERFORMANCE VENDEDOR
+# ============================================================
+elif opcao == "👥 Performance":
+    vends = df_filtrado['nome_vendedor'].dropna().unique()
+    perf = []
+    for v in vends:
+        c_cart = df_base[df_base['nome_vendedor_base'] == v]['codigo_cliente'].nunique()
+        c_ativa = df_historico_janela[df_historico_janela['nome_vendedor'] == v]['codigo_cliente'].nunique()
+        c_pos = df_filtrado[df_filtrado['nome_vendedor'] == v]['codigo_cliente'].nunique()
+        perf.append({
+            "Vendedor": v, "Carteira": c_cart, "Ativos": c_ativa, "Positivados": c_pos,
+            "% Ativa": round((c_pos/c_ativa*100 if c_ativa > 0 else 0), 1)
+        })
+    df_perf = pd.DataFrame(perf).sort_values("% Ativa", ascending=False)
+    st.dataframe(df_perf, use_container_width=True, hide_index=True)
+    download_excel(df_perf, "📥 Baixar Performance", "performance_vendedores")
+
+# ============================================================
+# PÁGINA: BATALHA NAVAL
+# ============================================================
+elif opcao == "📋 Batalha Naval":
+    st.subheader("Matriz de Cobertura")
+    matriz = df_filtrado.pivot_table(index=['codigo_cliente', 'nome_cliente'], columns='Nome_Fabricante', aggfunc='size', fill_value=0)
+    matriz_bin = (matriz > 0).astype(int).reset_index()
+    
+    # Estilização
+    def style_bn(val):
+        if isinstance(val, int):
+            return 'background-color: #c6efce; color: #006100' if val == 1 else 'background-color: #ffc7ce; color: #9c0006'
+        return ''
+
+    cols_fab = matriz_bin.columns[2:]
+    st.dataframe(matriz_bin.style.applymap(style_bn, subset=cols_fab), use_container_width=True)
+    download_excel(matriz_bin, "📥 Baixar Batalha Naval", "batalha_naval")
+
+# ============================================================
+# PÁGINA: SOFTYS FALCON
+# ============================================================
+elif opcao == "🟢 Softys Falcon":
+    df_s = df_historico[df_historico['Nome_Fabricante'] == 'SOFTYS FALCON']
+    if not df_s.empty:
+        st.subheader("🟢 Foco Estratégico: Softys Falcon")
+        resumo = df_s.groupby('Categoria')['codigo_cliente'].nunique().reset_index()
+        st.dataframe(resumo, use_container_width=True)
+        download_excel(df_s, "📥 Baixar Dados Softys", "softys_falcon")
+    else:
+        st.warning("Sem dados Softys para os filtros atuais.")
+
+# ============================================================
+# PÁGINA: KENVUE PERFUMARIA
+# ============================================================
+elif opcao == "🟠 Kenvue Perfumaria":
+    df_k = df_filtrado[(df_filtrado['Nome_Fabricante'] == 'KENVUE') & (df_filtrado['Canal'] == 'PERFUMARIA')]
+    st.subheader("🟠 Kenvue no Canal Perfumaria")
+    st.metric("Clientes Atendidos", df_k['codigo_cliente'].nunique())
+    st.dataframe(df_k[['codigo_cliente', 'nome_cliente', 'Municipio', 'nome_vendedor']].drop_duplicates(), use_container_width=True)
+
+# ============================================================
+# PÁGINA: FICHA CLIENTE
+# ============================================================
+elif opcao == "🔍 Ficha Cliente":
+    busca = st.text_input("Busque por Nome ou Código do Cliente")
+    if busca:
+        mask = (df_base['nome_cliente'].str.contains(busca, case=False, na=False)) | (df_base['codigo_cliente'].astype(str).str.contains(busca))
+        match = df_base[mask]
+        if not match.empty:
+            st.dataframe(match)
+            c_id = match.iloc[0]['codigo_cliente']
+            hist = df_merged[df_merged['codigo_cliente'] == c_id]
+            st.write("### Histórico de Compras")
+            st.dataframe(hist[['MŒs_Ano', 'Nome_Fabricante', 'Valor_Vendas']].sort_values('MŒs_Ano', ascending=False))
+        else:
+            st.error("Cliente não encontrado.")
+
+st.markdown("---")
+st.caption(f"Gerado em: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}")
