@@ -5,9 +5,11 @@ import plotly.graph_objects as go
 from datetime import datetime
 from io import BytesIO
 from zoneinfo import ZoneInfo
+import unicodedata
+import re
 
 # ============================================================
-# CONFIGURA DA PÁĺGINA
+# CONFIGURAÇÃO DA PÁGINA
 # ============================================================
 st.set_page_config(
     page_title="Dashboard Coordenador (Teste) - Batalha Naval",
@@ -24,7 +26,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Dashboard de Positivaçª£o e Cobertura (Teste)")
+st.title("📊 Dashboard de Positivação e Cobertura (Teste)")
 st.caption("4 Elos Distribuidora Ltda. - Centro de Custo 622")
 
 # ============================================================
@@ -62,26 +64,48 @@ def load_data():
         'Segmento': 'Segmento'
     })
 
-    # Normalizar BI_Teste
-    df_bi.columns = [str(col).strip().lower() for col in df_bi.columns]
+    # Normalizar BI_Teste (com detecção robusta de colunas)
+    df_bi.columns = [str(col).strip() for col in df_bi.columns]
     bi_rename = {}
+
+    def normalizar_texto(texto):
+        """Remove acentos, caracteres especiais e transforma em minúsculas."""
+        texto = unicodedata.normalize('NFKD', texto)
+        texto = texto.encode('ASCII', 'ignore').decode('ASCII')
+        texto = texto.lower().strip()
+        texto = re.sub(r'\s+', ' ', texto)
+        return texto
+
     for col in df_bi.columns:
-        if 'cÓ³digo cliente' in col or 'codigo cliente' in col:
+        col_norm = normalizar_texto(col)
+        if 'codigo cliente' in col_norm:
             bi_rename[col] = 'codigo_cliente'
-        elif 'vendedor' in col and 'ajustado' in col:
+        elif 'vendedor' in col_norm and 'ajustado' in col_norm:
             bi_rename[col] = 'nome_vendedor_bi'
-        elif 'ano e mŒs' in col or 'ano e mes' in col or 'ano_mŒs' in col or 'ano_mes' in col:
+        elif 'ano' in col_norm and 'mes' in col_norm:
             bi_rename[col] = 'Ano_e_Mes'
-        elif 'fabricante' in col:
+        elif 'fabricante' in col_norm:
             bi_rename[col] = 'Nome_Fabricante'
-        elif 'linha de produto' in col:
+        elif 'linha de produto' in col_norm:
             bi_rename[col] = 'Linha_Produto'
-        elif 'categoria' in col:
+        elif 'categoria' in col_norm:
             bi_rename[col] = 'Categoria'
-        elif 'valor das vendas' in col:
+        elif 'valor das vendas' in col_norm:
             bi_rename[col] = 'Valor_Vendas'
 
     df_bi = df_bi.rename(columns=bi_rename)
+
+    # Fallback: se ainda não achou a coluna de período, procura diretamente
+    if 'Ano_e_Mes' not in df_bi.columns:
+        for col in df_bi.columns:
+            if 'ano' in col.lower() and 'mes' in col.lower():
+                df_bi.rename(columns={col: 'Ano_e_Mes'}, inplace=True)
+                break
+
+    if 'Ano_e_Mes' not in df_bi.columns:
+        st.error("Não foi possível identificar a coluna de Ano/Mês no DataFrame BI_Teste.")
+        st.write("Colunas disponíveis:", df_bi.columns.tolist())
+        st.stop()
 
     # Processar datas
     df_bi['Data'] = pd.to_datetime(df_bi['Ano_e_Mes'] + '-01', errors='coerce')
@@ -89,7 +113,7 @@ def load_data():
     df_bi['Ano'] = df_bi['Data'].dt.year
     df_bi['MŒs_Ano'] = df_bi['Data'].dt.to_period('M').astype(str)
 
-    # Merge SEGURO por codigo_cliente (evitar duplicašŃo)
+    # Merge SEGURO por codigo_cliente (evitar duplicação)
     df_base_dedup = df_base.drop_duplicates(subset=['codigo_cliente'], keep='first')
 
     # Merge principal (por cliente + vendedor)
@@ -120,12 +144,12 @@ df_base, df_bi, df_merged, data_dados, fabricante_pasta, vendedor_pasta = load_d
 TODAS_INDUSTRIAS = sorted([i for i in df_bi['Nome_Fabricante'].dropna().unique() if str(i).strip() != ''])
 
 # ============================================================
-# FUNÇµES AUXILIARES
+# FUNÇÕES AUXILIARES
 # ============================================================
 def gerar_pdf_html(tabela_df, titulo):
     """Gera PDF a partir de DataFrame usando HTML + CSS"""
     try:
-        from weasyprint import HTML, CSS
+        from weasyprint import HTML
 
         html_content = f"""
         <html>
@@ -156,7 +180,7 @@ def gerar_pdf_html(tabela_df, titulo):
         pdf_buffer.seek(0)
         return pdf_buffer.getvalue()
     except ImportError:
-        st.error("Biblioteca 'weasyprint' nŃo instalada. Execute: pip install weasyprint")
+        st.error("Biblioteca 'weasyprint' não instalada. Execute: pip install weasyprint")
         return None
     except Exception as e:
         st.error(f"Erro ao gerar PDF: {str(e)}")
@@ -204,7 +228,7 @@ def aplicar_filtros_comuns(df, incluir_mes=True):
     return df
 
 def calcular_janela_movel(df_historico, mes_selecionado, janela_meses):
-    """Calcula a janela mÓ³vel de meses anteriores"""
+    """Calcula a janela móvel de meses anteriores"""
     if mes_selecionado == "Todos":
         return df_historico.copy()
 
@@ -263,7 +287,7 @@ with st.expander("🎯 Filtros", expanded=True):
             INDUSTRIAS_DISPONIVEIS = TODAS_INDUSTRIAS.copy()
         else:
             INDUSTRIAS_DISPONIVEIS = [ind for ind in TODAS_INDUSTRIAS if fabricante_pasta.get(ind) == pasta_selecionada]
-        industria_selecionada_lista = st.multiselect("Indœstria(s)", options=INDUSTRIAS_DISPONIVEIS, key='ind_top')
+        industria_selecionada_lista = st.multiselect("Indústria(s)", options=INDUSTRIAS_DISPONIVEIS, key='ind_top')
 
     with col_prod2:
         categoria_selecionada = st.multiselect("Categoria(s)", options=sorted(df_bi['Categoria'].dropna().unique()), key='cat_top')
@@ -271,7 +295,7 @@ with st.expander("🎯 Filtros", expanded=True):
     with col_prod3:
         linha_selecionada = st.multiselect("Linha(s) de Produto", options=sorted(df_bi['Linha_Produto'].dropna().unique()), key='linha_top')
 
-    st.markdown("**Localizaçª£o**")
+    st.markdown("**Localização**")
     col_loc1, col_loc2, col_loc3, col_loc4 = st.columns(4)
 
     with col_loc1:
@@ -285,7 +309,7 @@ with st.expander("🎯 Filtros", expanded=True):
         else:
             coligacoes_filtradas = df_base['Cliente_Coligacao'].dropna().unique()
         lista_coligacoes = ["Todas"] + sorted(coligacoes_filtradas)
-        coligacao_selecionada = st.selectbox("Coligaçª£o", lista_coligacoes, key='colig_top')
+        coligacao_selecionada = st.selectbox("Coligação", lista_coligacoes, key='colig_top')
 
     with col_loc2:
         canal_selecionado = st.multiselect("Canal(is)", options=sorted(df_base['Canal'].dropna().unique()), key='canal_top')
@@ -294,14 +318,14 @@ with st.expander("🎯 Filtros", expanded=True):
         segmento_selecionado = st.multiselect("Segmento(s)", options=sorted(df_base['Segmento'].dropna().unique()), key='seg_top')
 
     with col_loc4:
-        municipio_selecionado = st.multiselect("Munic�Â°pio(s)", options=sorted(df_base['Municipio'].dropna().unique()), key='muni_top')
+        municipio_selecionado = st.multiselect("Município(s)", options=sorted(df_base['Municipio'].dropna().unique()), key='muni_top')
 
-    st.markdown("**Per�Â°odo e Metas**")
+    st.markdown("**Período e Metas**")
     col_per1, col_per2, col_per3, col_per4 = st.columns(4)
 
     with col_per1:
         meses_disponiveis = sorted(df_merged['MŒs'].dropna().unique())
-        meses_nomes = {1:'Janeiro', 2:'Fevereiro', 3:'Marçªº', 4:'Abril', 5:'Maio', 6:'Junho', 
+        meses_nomes = {1:'Janeiro', 2:'Fevereiro', 3:'Março', 4:'Abril', 5:'Maio', 6:'Junho', 
                        7:'Julho', 8:'Agosto', 9:'Setembro', 10:'Outubro', 11:'Novembro', 12:'Dezembro'}
         lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes.get(int(m), '')}" for m in meses_disponiveis]
 
@@ -312,7 +336,7 @@ with st.expander("🎯 Filtros", expanded=True):
             else:
                 st.session_state['mes'] = 'Todos'
 
-        mes_selecionado = st.selectbox("MŒs", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_top')
+        mes_selecionado = st.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']), key='mes_top')
         st.session_state['mes'] = mes_selecionado
 
     with col_per2:
@@ -333,14 +357,14 @@ df_relatorio_base = aplicar_filtros_comuns(df_merged, incluir_mes=False)
 df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janela_meses)
 
 # ============================================================
-# NAVEGAÇªO
+# NAVEGAÇÃO
 # ============================================================
 st.markdown("---")
 opcoes_paginas = [
-    "🏠 VisŃo Geral",
+    "🏠 Visão Geral",
     "👥 Performance Vendedor",
-    "📍 Positivaçª£o por Munic�Â°pio",
-    "🏷�ïºº Positivaçª£o por Segmento",
+    "📍 Positivação por Município",
+    "🏷️ Positivação por Segmento",
     "🔀 Oportunidades Cruzadas",
     "🟢 Softys Falcon",
     "🟠 Kenvue Perfumaria",
@@ -348,21 +372,21 @@ opcoes_paginas = [
     "📋 Batalha Naval",
     "🔍 Ficha do Cliente"
 ]
-opcao = st.radio("Selecione a p‡gina:", opcoes_paginas, horizontal=True, key='nav')
+opcao = st.radio("Selecione a página:", opcoes_paginas, horizontal=True, key='nav')
 
 # ============================================================
-# PÁĺGINA: VISÃ£O GERAL
+# PÁGINA: VISÃO GERAL
 # ============================================================
-if opcao == "🏠 VisŃo Geral":
+if opcao == "🏠 Visão Geral":
     carteira_ativa_total = df_historico_janela[df_historico_janela['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
     positivados_periodo = df_filtrado[df_filtrado['Nome_Fabricante'].notna()]['codigo_cliente'].nunique()
     pct_ativa = (positivados_periodo / carteira_ativa_total * 100) if carteira_ativa_total > 0 else 0
 
-    st.subheader("📅 Carteira Ativa (Janela MÓ³vel)")
+    st.subheader("📅 Carteira Ativa (Janela Móvel)")
     col_a1, col_a2, col_a3 = st.columns(3)
-    col_a1.metric("Carteira Ativa (œltimos {} meses)".format(janela_meses), carteira_ativa_total)
-    col_a2.metric("Positivados no MŒs", positivados_periodo)
-    col_a3.metric("% Positivaçª£o (Ativa)", f"{pct_ativa:.1f}%")
+    col_a1.metric("Carteira Ativa (últimos {} meses)".format(janela_meses), carteira_ativa_total)
+    col_a2.metric("Positivados no Mês", positivados_periodo)
+    col_a3.metric("% Positivação (Ativa)", f"{pct_ativa:.1f}%")
 
     if mes_selecionado != "Todos":
         mes_num = int(mes_selecionado.split(' - ')[0])
@@ -375,24 +399,24 @@ if opcao == "🏠 VisŃo Geral":
     df_historico_ano = df_historico[df_historico['Ano'] == ano_ytd]
     df_mensal_ativos = df_historico_ano[df_historico_ano['Nome_Fabricante'].notna()]
     mensal_pos = df_mensal_ativos.groupby('MŒs_Ano')['codigo_cliente'].nunique().reset_index()
-    mensal_pos.columns = ['MŒs', 'Clientes Positivados']
+    mensal_pos.columns = ['Mês', 'Clientes Positivados']
 
     df_ytd = df_historico[(df_historico['Ano'] == ano_ytd) & (df_historico['MŒs'] <= mes_num)]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
     chart_data = pd.DataFrame({
-        'MŒs': list(mensal_pos['MŒs']) + ['YTD'],
+        'Mês': list(mensal_pos['Mês']) + ['YTD'],
         'Clientes Positivados': list(mensal_pos['Clientes Positivados']) + [ytd_total]
     })
 
-    colors = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_data['MŒs']]
+    colors = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_data['Mês']]
 
     fig = go.Figure(go.Bar(
-        x=chart_data['MŒs'],
+        x=chart_data['Mês'],
         y=chart_data['Clientes Positivados'],
         marker_color=colors
     ))
-    fig.update_layout(title='Positivaçª£o Carteira Ativa (Mensal + YTD)', yaxis_title='Clientes Positivados')
+    fig.update_layout(title='Positivação Carteira Ativa (Mensal + YTD)', yaxis_title='Clientes Positivados')
     st.plotly_chart(fig, use_container_width=True)
 
     if vendedor_selecionado != "Todos":
@@ -410,10 +434,10 @@ if opcao == "🏠 VisŃo Geral":
     col1, col2, col3 = st.columns(3)
     col1.metric("Clientes na Carteira", total_clientes_base)
     col2.metric("Clientes Positivados", total_positivados)
-    col3.metric("% Positivaçª£o (Carteira Total)", f"{pct_total:.1f}%")
+    col3.metric("% Positivação (Carteira Total)", f"{pct_total:.1f}%")
 
 # ============================================================
-# PÁĺGINA: PERFORMANCE POR VENDEDOR
+# PÁGINA: PERFORMANCE POR VENDEDOR
 # ============================================================
 elif opcao == "👥 Performance Vendedor":
     df_base_perf = df_base.copy()
@@ -453,48 +477,48 @@ elif opcao == "👥 Performance Vendedor":
             'Vendedor': vendedor, 'Pasta': pasta_v,
             'Total_Clientes': clientes_carteira, 'Clientes_Ativos_Hist': clientes_ativos_hist,
             'Clientes_Positivados': clientes_pos,
-            '%_Positivaçª£o_Ativa': round(pct_ativa_vend, 1), '%_Positivaçª£o_Total': round(pct_total_vend, 1),
+            '%_Positivação_Ativa': round(pct_ativa_vend, 1), '%_Positivação_Total': round(pct_total_vend, 1),
             'Cobertura_Media': round(cobertura_media_vend, 1), 'Cobertura_Total': cobertura_total_vend
         })
-    perf_vendedor = pd.DataFrame(perf_list).sort_values('%_Positivaçª£o_Ativa', ascending=False)
+    perf_vendedor = pd.DataFrame(perf_list).sort_values('%_Positivação_Ativa', ascending=False)
 
-    fig_ativa = px.bar(perf_vendedor, x='Vendedor', y='%_Positivaçª£o_Ativa', title='% Positivaçª£o (Base Ativa)',
-                       text=perf_vendedor['%_Positivaçª£o_Ativa'].apply(lambda x: f'{x:.1f}%'),
-                       color='%_Positivaçª£o_Ativa', color_continuous_scale='Greens')
+    fig_ativa = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Ativa', title='% Positivação (Base Ativa)',
+                       text=perf_vendedor['%_Positivação_Ativa'].apply(lambda x: f'{x:.1f}%'),
+                       color='%_Positivação_Ativa', color_continuous_scale='Greens')
     fig_ativa.add_hline(y=meta_ativa, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_ativa}%")
     fig_ativa.update_traces(textposition='outside')
-    fig_ativa.update_layout(xaxis_title="", yaxis_title="% Positivaçª£o", yaxis_range=[0, 105])
+    fig_ativa.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
     st.plotly_chart(fig_ativa, use_container_width=True)
 
-    fig_total = px.bar(perf_vendedor, x='Vendedor', y='%_Positivaçª£o_Total', title='% Positivaçª£o (Carteira Total)',
-                       text=perf_vendedor['%_Positivaçª£o_Total'].apply(lambda x: f'{x:.1f}%'),
-                       color='%_Positivaçª£o_Total', color_continuous_scale='Blues')
+    fig_total = px.bar(perf_vendedor, x='Vendedor', y='%_Positivação_Total', title='% Positivação (Carteira Total)',
+                       text=perf_vendedor['%_Positivação_Total'].apply(lambda x: f'{x:.1f}%'),
+                       color='%_Positivação_Total', color_continuous_scale='Blues')
     fig_total.add_hline(y=meta_total, line_dash="dash", line_color="red", annotation_text=f"Meta {meta_total}%")
     fig_total.update_traces(textposition='outside')
-    fig_total.update_layout(xaxis_title="", yaxis_title="% Positivaçª£o", yaxis_range=[0, 105])
+    fig_total.update_layout(xaxis_title="", yaxis_title="% Positivação", yaxis_range=[0, 105])
     st.plotly_chart(fig_total, use_container_width=True)
 
-    fig_cob = px.bar(perf_vendedor, x='Vendedor', y='Cobertura_Media', title='Cobertura MŒdia por Vendedor',
+    fig_cob = px.bar(perf_vendedor, x='Vendedor', y='Cobertura_Media', title='Cobertura Média por Vendedor',
                      text=perf_vendedor['Cobertura_Media'].apply(lambda x: f'{x:.1f}'),
                      color='Cobertura_Media', color_continuous_scale='Oranges')
     fig_cob.update_traces(textposition='outside')
-    fig_cob.update_layout(xaxis_title="", yaxis_title="Indœstrias/Cliente")
+    fig_cob.update_layout(xaxis_title="", yaxis_title="Indústrias/Cliente")
     st.plotly_chart(fig_cob, use_container_width=True)
 
     st.dataframe(perf_vendedor[['Vendedor', 'Pasta', 'Total_Clientes', 'Clientes_Ativos_Hist', 'Clientes_Positivados',
-                                '%_Positivaçª£o_Ativa', '%_Positivaçª£o_Total', 'Cobertura_Media', 'Cobertura_Total']],
+                                '%_Positivação_Ativa', '%_Positivação_Total', 'Cobertura_Media', 'Cobertura_Total']],
                  use_container_width=True, hide_index=True)
 
 # ============================================================
-# PÁĺGINA: POSITIVAÇªO POR MUNICÂ°PIO
+# PÁGINA: POSITIVAÇÃO POR MUNICÍPIO
 # ============================================================
-elif opcao == "📍 Positivaçª£o por Munic�Â°pio":
-    st.subheader("📍 Positivaçª£o por Munic�Â°pio")
+elif opcao == "📍 Positivação por Município":
+    st.subheader("📍 Positivação por Município")
     df_munic = df_filtrado.groupby('Municipio')['codigo_cliente'].nunique().reset_index()
-    df_munic.columns = ['Munic�Â°pio', 'Clientes Positivados']
+    df_munic.columns = ['Município', 'Clientes Positivados']
     df_munic = df_munic.sort_values('Clientes Positivados', ascending=False)
 
-    fig_munic = px.bar(df_munic, x='Munic�Â°pio', y='Clientes Positivados', text='Clientes Positivados',
+    fig_munic = px.bar(df_munic, x='Município', y='Clientes Positivados', text='Clientes Positivados',
                        color='Clientes Positivados', color_continuous_scale='Blues')
     fig_munic.update_traces(textposition='outside')
     fig_munic.update_layout(xaxis_title="", yaxis_title="Clientes Positivados")
@@ -503,10 +527,10 @@ elif opcao == "📍 Positivaçª£o por Munic�Â°pio":
     st.dataframe(df_munic, use_container_width=True, hide_index=True)
 
 # ============================================================
-# PÁĺGINA: POSITIVAÇªO POR SEGMENTO
+# PÁGINA: POSITIVAÇÃO POR SEGMENTO
 # ============================================================
-elif opcao == "🏷�ïºº Positivaçª£o por Segmento":
-    st.subheader("🏷�ïºº Positivaçª£o por Segmento")
+elif opcao == "🏷️ Positivação por Segmento":
+    st.subheader("🏷️ Positivação por Segmento")
     df_seg = df_filtrado.groupby('Segmento')['codigo_cliente'].nunique().reset_index()
     df_seg.columns = ['Segmento', 'Clientes Positivados']
     df_seg = df_seg.sort_values('Clientes Positivados', ascending=False)
@@ -520,19 +544,19 @@ elif opcao == "🏷�ïºº Positivaçª£o por Segmento":
     st.dataframe(df_seg, use_container_width=True, hide_index=True)
 
 # ============================================================
-# PÁĺGINA: OPORTUNIDADES CRUZADAS
+# PÁGINA: OPORTUNIDADES CRUZADAS
 # ============================================================
 elif opcao == "🔀 Oportunidades Cruzadas":
     st.subheader("🔀 Oportunidades Cruzadas")
 
     col_op1, col_op2 = st.columns(2)
     with col_op1:
-        st.markdown("**Indœstrias da Base (compradas)**")
-        base_op = st.multiselect("Selecione uma ou mais indœstrias que o cliente comprou:", 
+        st.markdown("**Indústrias da Base (compradas)**")
+        base_op = st.multiselect("Selecione uma ou mais indústrias que o cliente comprou:", 
                                  options=INDUSTRIAS_DISPONIVEIS, key='base_cruzada')
     with col_op2:
-        st.markdown("**Indœstrias de Comparaçª£o (nŃo compradas)**")
-        comp_op = st.multiselect("Selecione uma ou mais indœstrias que o cliente NÃ£O comprou:", 
+        st.markdown("**Indústrias de Comparação (não compradas)**")
+        comp_op = st.multiselect("Selecione uma ou mais indústrias que o cliente NÃO comprou:", 
                                  options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
 
     if base_op and comp_op:
@@ -540,8 +564,8 @@ elif opcao == "🔀 Oportunidades Cruzadas":
 
         base_sem_vendas = [ind for ind in base_op if df_analise[df_analise['Nome_Fabricante'] == ind].empty]
         if base_sem_vendas:
-            st.warning(f"As seguintes indœstrias da base nŃo tiveram vendas no per�Â°odo selecionado: {', '.join(base_sem_vendas)}.")
-            st.info("Nenhum cliente pode atender aos critŒrios com essas indœstrias.")
+            st.warning(f"As seguintes indústrias da base não tiveram vendas no período selecionado: {', '.join(base_sem_vendas)}.")
+            st.info("Nenhum cliente pode atender aos critérios com essas indústrias.")
         else:
             clientes_base = set(df_analise[df_analise['Nome_Fabricante'] == base_op[0]]['codigo_cliente'].unique())
             for ind in base_op[1:]:
@@ -554,11 +578,11 @@ elif opcao == "🔀 Oportunidades Cruzadas":
             clientes_oportunidade = clientes_base.intersection(clientes_comp)
 
             if clientes_oportunidade:
-                st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram da(s) indœstria(s) selecionada(s) e nŃo compraram da(s) indœstria(s) comparada(s).")
+                st.success(f"🔎 {len(clientes_oportunidade)} clientes compraram da(s) indústria(s) selecionada(s) e não compraram da(s) indústria(s) comparada(s).")
                 df_op = df_base[df_base['codigo_cliente'].isin(clientes_oportunidade)][
                     ['codigo_cliente', 'nome_cliente', 'Cliente_Coligacao', 'nome_vendedor_base']
                 ]
-                df_op.columns = ['CÓ³digo', 'Nome', 'Coligaçª£o', 'Vendedor']
+                df_op.columns = ['Código', 'Nome', 'Coligação', 'Vendedor']
                 st.dataframe(df_op, use_container_width=True, hide_index=True)
 
                 output_op = BytesIO()
@@ -576,18 +600,18 @@ elif opcao == "🔀 Oportunidades Cruzadas":
                                        file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf',
                                        mime='application/pdf', use_container_width=True)
             else:
-                st.info("Nenhum cliente atende aos critŒrios de oportunidade cruzada com os filtros atuais.")
+                st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
     else:
-        st.info("Selecione ao menos uma indœstria em cada lista para visualizar as oportunidades cruzadas.")
+        st.info("Selecione ao menos uma indústria em cada lista para visualizar as oportunidades cruzadas.")
 
 # ============================================================
-# PÁĺGINA: SOFTYS FALCON
+# PÁGINA: SOFTYS FALCON
 # ============================================================
 elif opcao == "🟢 Softys Falcon":
     df_softys = df_relatorio_base[df_relatorio_base['Nome_Fabricante'] == 'SOFTYS FALCON'].copy()
 
     if not df_softys.empty:
-        st.subheader("🟢 Foco EstratŒgico: Softys Falcon")
+        st.subheader("🟢 Foco Estratégico: Softys Falcon")
 
         if mes_selecionado != "Todos":
             mes_num = int(mes_selecionado.split(' - ')[0])
@@ -602,24 +626,24 @@ elif opcao == "🟢 Softys Falcon":
         df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['MŒs'] <= mes_atual_num)]
 
         monthly_totals = df_softys_ano.groupby('MŒs_Ano')['codigo_cliente'].nunique().reset_index()
-        monthly_totals.columns = ['MŒs', 'Clientes']
-        monthly_totals = monthly_totals[monthly_totals['MŒs'].isin(meses_ano)]
+        monthly_totals.columns = ['Mês', 'Clientes']
+        monthly_totals = monthly_totals[monthly_totals['Mês'].isin(meses_ano)]
 
         ytd_total = df_softys_ano['codigo_cliente'].nunique()
 
         chart_softys = pd.DataFrame({
-            'MŒs': list(monthly_totals['MŒs']) + ['YTD'],
+            'Mês': list(monthly_totals['Mês']) + ['YTD'],
             'Clientes': list(monthly_totals['Clientes']) + [ytd_total]
         })
 
-        colors_softys = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_softys['MŒs']]
+        colors_softys = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_softys['Mês']]
 
         fig_softys = go.Figure(go.Bar(
-            x=chart_softys['MŒs'],
+            x=chart_softys['Mês'],
             y=chart_softys['Clientes'],
             marker_color=colors_softys
         ))
-        fig_softys.update_layout(title='Positivaçª£o Softys Falcon (Mensal + YTD)', yaxis_title='Clientes')
+        fig_softys.update_layout(title='Positivação Softys Falcon (Mensal + YTD)', yaxis_title='Clientes')
         st.plotly_chart(fig_softys, use_container_width=True)
 
         pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='MŒs_Ano', 
@@ -633,7 +657,7 @@ elif opcao == "🟢 Softys Falcon":
         ordered_cols = ['Categoria'] + meses_ano + ['YTD']
         tabela = tabela[ordered_cols]
 
-        st.markdown("**Positivaçª£o por Categoria (todos os meses do ano + YTD)**")
+        st.markdown("**Positivação por Categoria (todos os meses do ano + YTD)**")
         st.dataframe(tabela, use_container_width=True, hide_index=True)
 
         # Excel
@@ -686,7 +710,7 @@ elif opcao == "🟢 Softys Falcon":
         st.warning("Nenhum dado da Softys Falcon para os filtros atuais.")
 
 # ============================================================
-# PÁĺGINA: KENVUE PERFUMARIA
+# PÁGINA: KENVUE PERFUMARIA
 # ============================================================
 elif opcao == "🟠 Kenvue Perfumaria":
     df_perfumarias_ativas = df_historico_janela[df_historico_janela['Canal'] == 'PERFUMARIA'].copy()
@@ -701,9 +725,9 @@ elif opcao == "🟠 Kenvue Perfumaria":
             atendidos = len(clientes_kenvue_mes)
             pct_atendido = (atendidos / total_perfumarias_ativas * 100) if total_perfumarias_ativas > 0 else 0
 
-            st.subheader("🟠 Foco EstratŒgico: Kenvue no Canal Perfumaria")
-            st.metric("Perfumarias Ativas (janela mÓ³vel)", total_perfumarias_ativas)
-            st.metric("Atendidas com Kenvue (mŒs atual)", f"{atendidos} ({pct_atendido:.1f}%)")
+            st.subheader("🟠 Foco Estratégico: Kenvue no Canal Perfumaria")
+            st.metric("Perfumarias Ativas (janela móvel)", total_perfumarias_ativas)
+            st.metric("Atendidas com Kenvue (mês atual)", f"{atendidos} ({pct_atendido:.1f}%)")
             st.progress(min(pct_atendido / 100, 1.0), text="Meta: 50%")
 
             clientes_nao_atendidos = [c for c in df_perfumarias_ativas['codigo_cliente'].unique() 
@@ -715,7 +739,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
                 df_chegamos = df_base[df_base['codigo_cliente'].isin(clientes_kenvue_mes)][
                     ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']
                 ]
-                df_chegamos.columns = ['CÓ³digo', 'Nome', 'Munic�Â°pio', 'Coligaçª£o', 'Vendedor']
+                df_chegamos.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_chegamos, use_container_width=True, hide_index=True)
 
                 # Excel
@@ -735,18 +759,18 @@ elif opcao == "🟠 Kenvue Perfumaria":
                                        mime='application/pdf', use_container_width=True)
 
             with col_ken2:
-                st.markdown(f"❌ **NŃo chegamos** ({len(clientes_nao_atendidos)})")
+                st.markdown(f"❌ **Não chegamos** ({len(clientes_nao_atendidos)})")
                 df_nao = df_base[df_base['codigo_cliente'].isin(clientes_nao_atendidos)][
                     ['codigo_cliente', 'nome_cliente', 'Municipio', 'Cliente_Coligacao', 'nome_vendedor_base']
                 ]
-                df_nao.columns = ['CÓ³digo', 'Nome', 'Munic�Â°pio', 'Coligaçª£o', 'Vendedor']
+                df_nao.columns = ['Código', 'Nome', 'Município', 'Coligação', 'Vendedor']
                 st.dataframe(df_nao, use_container_width=True, hide_index=True)
 
                 # Excel
                 output_nao = BytesIO()
                 with pd.ExcelWriter(output_nao, engine='openpyxl') as writer:
                     df_nao.to_excel(writer, index=False, sheet_name='Nao Chegamos')
-                st.download_button("📥 Baixar Excel (NŃo Chegamos)", data=output_nao.getvalue(),
+                st.download_button("📥 Baixar Excel (Não Chegamos)", data=output_nao.getvalue(),
                                    file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.xlsx',
                                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
                                    use_container_width=True)
@@ -754,7 +778,7 @@ elif opcao == "🟠 Kenvue Perfumaria":
                 # PDF
                 pdf_nao = gerar_pdf_html(df_nao, "Kenvue - Não Chegamos")
                 if pdf_nao:
-                    st.download_button("📄 Baixar PDF (NŃo Chegamos)", data=pdf_nao,
+                    st.download_button("📄 Baixar PDF (Não Chegamos)", data=pdf_nao,
                                        file_name=f'kenvue_nao_chegamos_{datetime.now().strftime("%Y%m%d")}.pdf',
                                        mime='application/pdf', use_container_width=True)
 
@@ -790,24 +814,25 @@ elif opcao == "🟠 Kenvue Perfumaria":
                                    file_name=f'kenvue_meta_vendedor_{datetime.now().strftime("%Y%m%d")}.pdf',
                                    mime='application/pdf', use_container_width=True)
         else:
-            st.warning("Nenhuma venda de Kenvue no mŒs atual para o canal Perfumaria.")
+            st.warning("Nenhuma venda de Kenvue no mês atual para o canal Perfumaria.")
     else:
-        st.warning("Nenhuma perfumaria ativa na janela mÓ³vel.")
+        st.warning("Nenhuma perfumaria ativa na janela móvel.")
 
 # ============================================================
-# PÁĺGINA: CENOURA & BRONZE
+# PÁGINA: CENOURA & BRONZE
 # ============================================================
 elif opcao == "🟤 Cenoura & Bronze":
     df_cenoura = df_relatorio_base[df_relatorio_base['Linha_Produto'] == 'CENOURA & BRONZE'].copy()
 
     if not df_cenoura.empty:
-        st.subheader("🟤 Foco EstratŒgico: Linha Cenoura & Bronze")
+        st.subheader("🟤 Foco Estratégico: Linha Cenoura & Bronze")
 
         if mes_selecionado != "Todos":
             mes_num = int(mes_selecionado.split(' - ')[0])
             anos_do_mes = df_cenoura[df_cenoura['MŒs'] == mes_num]['Ano'].unique()
             ano_atual = max(anos_do_mes) if len(anos_do_mes) > 0 else df_cenoura['Ano'].max()
             mes_atual_num = mes_num
+            # Corrigido: usar 'MŒs' em vez de 'Mês'
             months_window = [f"{a}-{m:02d}" for a, m in calcular_janela_movel(df_cenoura, mes_selecionado, janela_meses)[['Ano', 'MŒs']].drop_duplicates().itertuples(index=False, name=None)]
             current_month_str = f"{ano_atual}-{mes_atual_num:02d}"
         else:
@@ -827,22 +852,22 @@ elif opcao == "🟤 Cenoura & Bronze":
             pct = (clientes_mes / media_6m * 100) if media_6m > 0 else 0
             lista_cen.append({
                 'Vendedor': vend, 
-                'MŒdia 6M': round(media_6m, 1), 
-                'MŒs Atual': clientes_mes, 
-                '% MŒs vs MŒdia': round(pct, 1)
+                'Média 6M': round(media_6m, 1), 
+                'Mês Atual': clientes_mes, 
+                '% Mês vs Média': round(pct, 1)
             })
         df_cen_vend = pd.DataFrame(lista_cen)
 
-        fig_cen_media = px.bar(df_cen_vend, x='Vendedor', y='MŒdia 6M', title='MŒdia 6 meses', 
-                               text='MŒdia 6M', color='MŒdia 6M')
+        fig_cen_media = px.bar(df_cen_vend, x='Vendedor', y='Média 6M', title='Média 6 meses', 
+                               text='Média 6M', color='Média 6M')
         st.plotly_chart(fig_cen_media, use_container_width=True)
 
-        fig_cen_mes = px.bar(df_cen_vend, x='Vendedor', y='MŒs Atual', title='MŒs Atual', 
-                             text='MŒs Atual', color='MŒs Atual')
+        fig_cen_mes = px.bar(df_cen_vend, x='Vendedor', y='Mês Atual', title='Mês Atual', 
+                             text='Mês Atual', color='Mês Atual')
         st.plotly_chart(fig_cen_mes, use_container_width=True)
 
-        fig_cen_pct = px.bar(df_cen_vend, x='Vendedor', y='% MŒs vs MŒdia', title='% MŒs vs MŒdia 6M', 
-                             text='% MŒs vs MŒdia', color='% MŒs vs MŒdia')
+        fig_cen_pct = px.bar(df_cen_vend, x='Vendedor', y='% Mês vs Média', title='% Mês vs Média 6M', 
+                             text='% Mês vs Média', color='% Mês vs Média')
         st.plotly_chart(fig_cen_pct, use_container_width=True)
 
         st.dataframe(df_cen_vend, use_container_width=True, hide_index=True)
@@ -850,10 +875,10 @@ elif opcao == "🟤 Cenoura & Bronze":
         st.warning("Nenhum dado de Cenoura & Bronze para os filtros atuais.")
 
 # ============================================================
-# PÁĺGINA: BATALHA NAVAL (Geral)
+# PÁGINA: BATALHA NAVAL (Geral)
 # ============================================================
 elif opcao == "📋 Batalha Naval":
-    st.subheader("📋 Batalha Naval — Matriz Cliente × Indœstria")
+    st.subheader("📋 Batalha Naval — Matriz Cliente × Indústria")
 
     if not df_filtrado.empty:
         df_bn = df_filtrado[['codigo_cliente', 'nome_cliente', 'Municipio', 
@@ -893,7 +918,7 @@ elif opcao == "📋 Batalha Naval":
         st.info("Nenhum dado para exibir a Batalha Naval com os filtros atuais.")
 
 # ============================================================
-# PÁĺGINA: FICHA DO CLIENTE
+# PÁGINA: FICHA DO CLIENTE
 # ============================================================
 elif opcao == "🔍 Ficha do Cliente":
     st.subheader("🔍 Ficha do Cliente")
@@ -915,26 +940,26 @@ elif opcao == "🔍 Ficha do Cliente":
                     municipio = df_cliente['Municipio'].iloc[0]
                     canal = df_cliente['Canal'].iloc[0]
                     segmento = df_cliente['Segmento'].iloc[0]
-                    st.write(f"CÓ³digo: {codigo}")
-                    st.write(f"Coligaçª£o: {coligacao}")
-                    st.write(f"Munic�Â°pio: {municipio}")
+                    st.write(f"Código: {codigo}")
+                    st.write(f"Coligação: {coligacao}")
+                    st.write(f"Município: {municipio}")
                     st.write(f"Canal: {canal}")
                     st.write(f"Segmento: {segmento}")
 
                 with col_f2:
-                    st.markdown("**Performance no Per�Â°odo**")
+                    st.markdown("**Performance no Período**")
                     total_pedidos = len(df_cliente)
                     ind_compradas = df_cliente['Nome_Fabricante'].nunique()
                     categorias = df_cliente['Categoria'].nunique()
                     st.write(f"Total de Pedidos: {total_pedidos}")
-                    st.write(f"Indœstrias Compradas: {ind_compradas}")
+                    st.write(f"Indústrias Compradas: {ind_compradas}")
                     st.write(f"Categorias: {categorias}")
 
-                st.markdown("**HistÓ³rico de Compras**")
+                st.markdown("**Histórico de Compras**")
                 df_hist = df_cliente.groupby(['MŒs_Ano', 'Nome_Fabricante'])['codigo_cliente'].count().reset_index()
-                df_hist.columns = ['MŒs', 'Indœstria', 'Pedidos']
+                df_hist.columns = ['Mês', 'Indústria', 'Pedidos']
                 st.dataframe(df_hist, use_container_width=True, hide_index=True)
             else:
                 st.warning("Nenhum dado encontrado para este cliente.")
     else:
-        st.info("Nenhum cliente dispon�Â°vel com os filtros atuais.")
+        st.info("Nenhum cliente disponível com os filtros atuais.")
