@@ -133,7 +133,6 @@ def load_data():
         st.error("Não foi possível identificar a coluna de Ano/Mês no DataFrame BI_Teste.")
         st.stop()
 
-    # Processar datas de forma segura
     df_bi['Data'] = pd.to_datetime(df_bi['Ano_e_Mes'] + '-01', errors='coerce')
     df_bi['Mes_Num'] = df_bi['Data'].dt.month
     df_bi['Ano'] = df_bi['Data'].dt.year
@@ -409,26 +408,33 @@ if opcao == "🏠 Visão Geral":
         ano_ytd = max(anos_do_mes) if len(anos_do_mes) > 0 else df_historico['Ano'].max()
     else:
         ano_ytd = df_historico['Ano'].max()
-        mes_num = df_historico['Mes_Num'].max()
+        mes_num = df_historico['Mes_Num'].max() if not df_historico.empty else 12
 
     df_historico_ano = df_historico[df_historico['Ano'] == ano_ytd]
     df_mensal_ativos = df_historico_ano[df_historico_ano['Nome_Fabricante'].notna()]
     mensal_pos = df_mensal_ativos.groupby('Mes_Ano')['codigo_cliente'].nunique().reset_index()
     mensal_pos.columns = ['Mês', 'Clientes Positivados']
 
-    # Cálculo do acumulado YTD (clientes únicos positivados até o mês selecionado no ano)
     df_ytd = df_historico_ano[
         (df_historico_ano['Mes_Num'] <= mes_num) & 
         (df_historico_ano['Nome_Fabricante'].notna())
     ]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
+    lista_meses_grafico = list(mensal_pos['Mês'])
+    lista_valores_grafico = list(mensal_pos['Clientes Positivados'])
+
+    if 'YTD' not in lista_meses_grafico:
+        lista_meses_grafico.append('YTD')
+        lista_valores_grafico.append(ytd_total)
+
     chart_data = pd.DataFrame({
-        'Mês': list(mensal_pos['Mês']) + ['YTD'],
-        'Clientes Positivados': list(mensal_pos['Clientes Positivados']) + [ytd_total]
+        'Mês': lista_meses_grafico,
+        'Clientes Positivados': lista_valores_grafico
     })
 
-    colors = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_data['Mês']]
+    # Destaque de cor diferente para a coluna YTD (simulando eixo secundário)
+    colors = ['#2E8B57' if str(mes) != 'YTD' else '#D9534F' for mes in chart_data['Mês']]
 
     fig = go.Figure(go.Bar(
         x=chart_data['Mês'],
@@ -438,9 +444,9 @@ if opcao == "🏠 Visão Geral":
         marker_color=colors
     ))
     fig.update_layout(
-        title=f'Positivação Carteira Ativa (Mensal + YTD {ano_ytd})', 
+        title=f'Positivação Carteira Ativa (Mensal + YTD {ano_ytd} - YTD em destaque vermelho)', 
         yaxis_title='Clientes Positivados',
-        yaxis_range=[0, chart_data['Clientes Positivados'].max() * 1.15]
+        yaxis_range=[0, (chart_data['Clientes Positivados'].max() or 1) * 1.15]
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -626,7 +632,7 @@ elif opcao == "🟢 Softys Falcon":
             mes_atual_num = mes_num
         else:
             ano_atual = df_softys['Ano'].max()
-            mes_atual_num = df_softys['Mes_Num'].max()
+            mes_atual_num = df_softys['Mes_Num'].max() if not df_softys.empty else 12
 
         meses_ano = [f"{ano_atual}-{m:02d}" for m in range(1, mes_atual_num + 1)]
         df_softys_ano = df_softys[(df_softys['Ano'] == ano_atual) & (df_softys['Mes_Num'] <= mes_atual_num)]
@@ -642,7 +648,7 @@ elif opcao == "🟢 Softys Falcon":
             'Clientes': list(monthly_totals['Clientes']) + [ytd_total]
         })
 
-        colors_softys = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_softys['Mês']]
+        colors_softys = ['#2E8B57' if str(mes) != 'YTD' else '#D9534F' for mes in chart_softys['Mês']]
 
         fig_softys = go.Figure(go.Bar(
             x=chart_softys['Mês'],
@@ -651,20 +657,22 @@ elif opcao == "🟢 Softys Falcon":
             textposition='outside',
             marker_color=colors_softys
         ))
-        fig_softys.update_layout(title='Positivação Softys Falcon (Mensal + YTD)', yaxis_title='Clientes')
+        fig_softys.update_layout(title='Positivação Softys Falcon (Mensal + YTD - YTD em destaque)', yaxis_title='Clientes')
         st.plotly_chart(fig_softys, use_container_width=True)
 
         pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='Mes_Ano', 
                                                   values='codigo_cliente', aggfunc='nunique', fill_value=0)
-        pivot_mensal = pivot_mensal.reindex(columns=meses_ano, fill_value=0)
+        
+        for m in meses_ano:
+            if m not in pivot_mensal.columns:
+                pivot_mensal[m] = 0
+                
+        pivot_mensal = pivot_mensal[meses_ano]
         ytd_series = df_softys_ano.groupby('Categoria')['codigo_cliente'].nunique()
         
         tabela = pivot_mensal.copy()
         tabela['YTD'] = ytd_series
         tabela = tabela.reset_index().fillna(0)
-
-        ordered_cols = ['Categoria'] + meses_ano + ['YTD']
-        tabela = tabela[ordered_cols]
 
         st.markdown("**Positivação por Categoria (Mensal + YTD)**")
         st.dataframe(tabela, use_container_width=True, hide_index=True)
