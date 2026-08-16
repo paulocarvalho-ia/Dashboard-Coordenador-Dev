@@ -437,39 +437,47 @@ if opcao == "🏠 Visão Geral":
     col_a2.metric("Positivados no Mês", positivados_periodo)
     col_a3.metric("% Positivação (Ativa)", f"{pct_ativa:.1f}%")
 
-    # Tratamento para definir o Ano de referência e o limite YTD
-    if mes_selecionado != "Todos":
-        mes_num = int(mes_selecionado.split(' - ')[0])
-        anos_do_mes = df_historico[df_historico['Mes_Num'] == mes_num]['Ano'].unique()
-        ano_ytd = max(anos_do_mes) if len(anos_do_mes) > 0 else (df_historico['Ano'].max() if not df_historico.empty else datetime.now().year)
+    # Tratamento robusto para definir o Ano de referência e o limite YTD
+    if mes_selecionado != "Todos" and ' - ' in str(mes_selecionado):
+        try:
+            mes_num = int(mes_selecionado.split(' - ')[0])
+        except ValueError:
+            mes_num = 12
+        
+        anos_do_mes = df_historico[df_historico['Mes_Num'] == mes_num]['Ano'].unique() if not df_historico.empty else []
+        ano_ytd = int(max(anos_do_mes)) if len(anos_do_mes) > 0 else (int(df_historico['Ano'].max()) if not df_historico.empty and pd.notna(df_historico['Ano'].max()) else datetime.now().year)
     else:
-        ano_ytd = df_historico['Ano'].max() if not df_historico.empty else datetime.now().year
+        ano_ytd = int(df_historico['Ano'].max()) if not df_historico.empty and pd.notna(df_historico['Ano'].max()) else datetime.now().year
         mes_num = 12
 
     # Filtrar dados do histórico global para o ano corrente do gráfico
-    df_historico_ano = df_historico[df_historico['Ano'] == ano_ytd]
+    df_historico_ano = df_historico[df_historico['Ano'] == ano_ytd].copy()
     df_mensal_ativos = df_historico_ano[df_historico_ano['Nome_Fabricante'].notna()]
     
     mensal_pos = df_mensal_ativos.groupby('Mes_Ano')['codigo_cliente'].nunique().reset_index()
     mensal_pos.columns = ['Mês', 'Clientes Positivados']
 
-    # Clientes únicos acumulados no ano até o mês selecionado (YTD correto)
+    # Clientes únicos acumulados no ano até o mês selecionado (YTD correto de base ativa)
     df_ytd = df_historico_ano[
         (df_historico_ano['Mes_Num'] <= mes_num) & 
         (df_historico_ano['Nome_Fabricante'].notna())
     ]
-    ytd_total = df_ytd['codigo_cliente'].nunique()
+    ytd_total = int(df_ytd['codigo_cliente'].nunique())
 
-    # Garantir que a lista contenha os meses do ano e adicione o YTD no final
-    lista_meses_grafico = list(mensal_pos['Mês'])
-    lista_valores_grafico = list(mensal_pos['Clientes Positivados'])
+    # Garantir que a lista contenha os meses do ano e adicione o YTD de forma forçada
+    lista_meses_grafico = list(mensal_pos['Mês']) if not mensal_pos.empty else []
+    lista_valores_grafico = list(mensal_pos['Clientes Positivados']) if not mensal_pos.empty else []
 
-    if 'YTD' not in lista_meses_grafico:
+    # Força a adição da barra YTD independentemente de já existir na listagem mensal
+    if 'YTD' in lista_meses_grafico:
+        idx_ytd = lista_meses_grafico.index('YTD')
+        lista_valores_grafico[idx_ytd] = ytd_total
+    else:
         lista_meses_grafico.append('YTD')
         lista_valores_grafico.append(ytd_total)
 
     chart_data = pd.DataFrame({
-        'Mês': lista_meses_grafico,
+        'Mês': [str(m) for m in lista_meses_grafico],
         'Clientes Positivados': lista_valores_grafico
     })
 
@@ -482,10 +490,16 @@ if opcao == "🏠 Visão Geral":
         textposition='outside',
         marker_color=colors
     ))
+    
+    max_val = chart_data['Clientes Positivados'].max() if not chart_data.empty else 1
+    if pd.isna(max_val) or max_val == 0:
+        max_val = 1
+
     fig.update_layout(
         title=f'Positivação Carteira Ativa (Mensal + YTD {ano_ytd} - YTD em destaque vermelho)', 
         yaxis_title='Clientes Positivados',
-        yaxis_range=[0, (chart_data['Clientes Positivados'].max() or 1) * 1.15]
+        yaxis_range=[0, max_val * 1.15],
+        xaxis_type='category'
     )
     st.plotly_chart(fig, use_container_width=True)
 
