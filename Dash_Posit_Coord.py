@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="Dashboard Coordenador (Teste) - Batalha Naval",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded" # Expandido para mostrar o novo menu
+    initial_sidebar_state="expanded"
 )
 
 st.markdown("""
@@ -164,7 +164,7 @@ def gerar_pdf_html(tabela_df, titulo):
         return None
 
 def aplicar_filtros_comuns(df, incluir_mes=True):
-    """Aplicando filtros usando indexação booleana (Otimização 2: sem .copy())"""
+    """Aplicando filtros usando indexação booleana (sem .copy())"""
     mask = pd.Series(True, index=df.index)
 
     if pasta_selecionada not in ["Todas", "PVA"]:
@@ -250,11 +250,18 @@ with st.expander("🎯 Filtros Globais", expanded=False):
     meses_nomes = {1:'Jan', 2:'Fev', 3:'Mar', 4:'Abr', 5:'Mai', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Set', 10:'Out', 11:'Nov', 12:'Dez'}
     lista_meses = ["Todos"] + [f"{int(m):02d} - {meses_nomes.get(int(m), '')}" for m in meses_disp]
     
-    if 'mes' not in st.session_state: st.session_state['mes'] = lista_meses[-1] if meses_disp else 'Todos'
-    
     with col_per1:
-        mes_selecionado = st.selectbox("Mês", lista_meses, index=lista_meses.index(st.session_state['mes']))
+        if 'mes' not in st.session_state or st.session_state['mes'] not in lista_meses:
+            st.session_state['mes'] = lista_meses[-1] if lista_meses else 'Todos'
+            
+        try:
+            indice_atual = lista_meses.index(st.session_state['mes'])
+        except ValueError:
+            indice_atual = 0
+
+        mes_selecionado = st.selectbox("Mês", lista_meses, index=indice_atual)
         st.session_state['mes'] = mes_selecionado
+        
     with col_per2: janela_meses = st.slider("Janela Ativa (meses)", 3, 6, 6)
     with col_per3: meta_ativa = st.number_input("Meta Ativa (%)", 0, 100, 70)
     with col_per4: meta_total = st.number_input("Meta Total (%)", 0, 100, 50)
@@ -267,7 +274,7 @@ df_historico_janela = calcular_janela_movel(df_historico, mes_selecionado, janel
 
 
 # ============================================================
-# PÁGINAS (Definidas como Funções - Otimização 3)
+# PÁGINAS (Definidas como Funções)
 # ============================================================
 
 def pagina_visao_geral():
@@ -283,8 +290,6 @@ def pagina_visao_geral():
 def pagina_performance_vendedor():
     st.header("👥 Performance por Vendedor")
     
-    # OTIMIZAÇÃO 1: Vetorização (groupby) em vez de laço FOR
-    # Base de carteira (Aplicando filtros de locação/vendedor na base pura)
     mask_base = pd.Series(True, index=df_base.index)
     if coordenador_selecionado != "Todos": mask_base &= (df_base['Nome_Coordenador'] == coordenador_selecionado)
     if vendedor_selecionado != "Todos": mask_base &= (df_base['nome_vendedor_base'] == vendedor_selecionado)
@@ -292,21 +297,14 @@ def pagina_performance_vendedor():
     
     df_base_perf = df_base[mask_base]
     
-    # 1. Clientes Carteira Total
     carteira = df_base_perf.groupby('nome_vendedor_base')['codigo_cliente'].nunique().reset_index(name='Total_Clientes')
-    
-    # 2. Clientes Ativos (Janela)
     ativos = df_historico_janela.groupby('nome_vendedor')['codigo_cliente'].nunique().reset_index(name='Clientes_Ativos_Hist')
-    
-    # 3. Clientes Positivados no Mês
     pos = df_filtrado[df_filtrado['Nome_Fabricante'].notna()].groupby('nome_vendedor')['codigo_cliente'].nunique().reset_index(name='Clientes_Positivados')
     
-    # 4. Cobertura (Média e Total)
     cob_base = df_filtrado.dropna(subset=['Nome_Fabricante']).drop_duplicates(['nome_vendedor', 'codigo_cliente', 'Nome_Fabricante'])
     cob_media = cob_base.groupby(['nome_vendedor', 'codigo_cliente']).size().groupby('nome_vendedor').mean().reset_index(name='Cobertura_Media')
     cob_total = cob_base.groupby('nome_vendedor').size().reset_index(name='Cobertura_Total')
 
-    # Merge de todas as métricas vetorizadas
     vendedores = pd.DataFrame({'nome_vendedor': carteira['nome_vendedor_base'].unique()})
     perf = vendedores.merge(carteira, left_on='nome_vendedor', right_on='nome_vendedor_base', how='left')
     perf = perf.merge(ativos, on='nome_vendedor', how='left')
@@ -320,7 +318,6 @@ def pagina_performance_vendedor():
     
     perf = perf.sort_values('%_Positivação_Ativa', ascending=False)
     
-    # Gráficos e Tabela
     fig_ativa = px.bar(perf, x='nome_vendedor', y='%_Positivação_Ativa', title='% Positivação (Base Ativa)', text_auto='.1f', color='%_Positivação_Ativa', color_continuous_scale='Greens')
     fig_ativa.add_hline(y=meta_ativa, line_dash="dash", line_color="red")
     st.plotly_chart(fig_ativa, use_container_width=True)
@@ -335,18 +332,14 @@ def pagina_cenoura_bronze():
         st.warning("Sem dados de Cenoura & Bronze para os filtros atuais.")
         return
 
-    # OTIMIZAÇÃO 1: Vetorização (groupby)
     window_df = calcular_janela_movel(df_cenoura, mes_selecionado, janela_meses)
     mes_str = f"{df_cenoura['Ano'].max()}-{int(mes_selecionado.split(' - ')[0]):02d}" if mes_selecionado != "Todos" else window_df['MŒs_Ano'].max()
     
-    # 1. Média 6M vetorizada
     clientes_por_mes = window_df.groupby(['nome_vendedor', 'MŒs_Ano'])['codigo_cliente'].nunique().reset_index()
     media_6m = clientes_por_mes.groupby('nome_vendedor')['codigo_cliente'].mean().reset_index(name='Média 6M')
     
-    # 2. Mês atual vetorizado
     mes_atual = df_cenoura[df_cenoura['MŒs_Ano'] == mes_str].groupby('nome_vendedor')['codigo_cliente'].nunique().reset_index(name='Mês Atual')
     
-    # Merge
     vendedores = pd.DataFrame({'Vendedor': df_cenoura['nome_vendedor'].dropna().unique()})
     cen_df = vendedores.merge(media_6m, left_on='Vendedor', right_on='nome_vendedor', how='left').drop(columns='nome_vendedor')
     cen_df = cen_df.merge(mes_atual, left_on='Vendedor', right_on='nome_vendedor', how='left').drop(columns='nome_vendedor').fillna(0)
@@ -389,10 +382,8 @@ menu_opcoes = {
     "📋 Batalha Naval": pagina_batalha_naval
 }
 
-# Aqui criamos o menu lateral nativo (Limpo e Organizado)
 with st.sidebar:
     st.title("Navegação")
     escolha = st.radio("Ir para:", list(menu_opcoes.keys()))
 
-# Executa a função correspondente à página escolhida
 menu_opcoes[escolha]()
