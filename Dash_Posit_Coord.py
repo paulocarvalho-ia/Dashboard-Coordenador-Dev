@@ -581,11 +581,34 @@ elif opcao == "🏷️ Positivação por Segmento":
     st.dataframe(df_seg, use_container_width=True, hide_index=True)
 
 # ============================================================
-# PÁGINA: OPORTUNIDADES CRUZADAS
+# PÁGINA: OPORTUNIDADES CRUZADAS (COM PERÍODO)
 # ============================================================
 elif opcao == "🔀 Oportunidades Cruzadas":
     st.subheader("🔀 Oportunidades Cruzadas")
 
+    # Seleção de período de análise
+    meses_oportunidades = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
+    if not meses_oportunidades:
+        st.warning("Nenhum dado disponível para análise.")
+        st.stop()
+
+    col_per1, col_per2 = st.columns(2)
+    with col_per1:
+        mes_op_inicio = st.selectbox("Mês início:", options=meses_oportunidades, index=0, key='mes_op_inicio')
+    with col_per2:
+        mes_op_fim = st.selectbox("Mês fim:", options=meses_oportunidades, index=len(meses_oportunidades)-1, key='mes_op_fim')
+
+    if mes_op_inicio > mes_op_fim:
+        st.warning("Mês início deve ser menor ou igual ao mês fim.")
+        st.stop()
+
+    # Filtrar dados pelo período selecionado
+    df_analise = df_relatorio_base[
+        (df_relatorio_base['MŒs_Ano'] >= mes_op_inicio) & 
+        (df_relatorio_base['MŒs_Ano'] <= mes_op_fim)
+    ].copy()
+
+    # Seleção das indústrias
     col_op1, col_op2 = st.columns(2)
     with col_op1:
         st.markdown("**Indústrias da Base (compradas)**")
@@ -597,8 +620,6 @@ elif opcao == "🔀 Oportunidades Cruzadas":
                                  options=INDUSTRIAS_DISPONIVEIS, key='comp_cruzada')
 
     if base_op and comp_op:
-        df_analise = df_filtrado.copy()
-
         base_sem_vendas = [ind for ind in base_op if df_analise[df_analise['Nome_Fabricante'] == ind].empty]
         if base_sem_vendas:
             st.warning(f"As seguintes indústrias da base não tiveram vendas no período selecionado: {', '.join(base_sem_vendas)}.")
@@ -629,13 +650,6 @@ elif opcao == "🔀 Oportunidades Cruzadas":
                                    file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx',
                                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
                                    use_container_width=True)
-
-                # PDF
-                pdf_data = gerar_pdf_html(df_op, "Oportunidades Cruzadas")
-                if pdf_data:
-                    st.download_button("📄 Baixar PDF (Oportunidades)", data=pdf_data,
-                                       file_name=f'oportunidades_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf',
-                                       mime='application/pdf', use_container_width=True)
             else:
                 st.info("Nenhum cliente atende aos critérios de oportunidade cruzada com os filtros atuais.")
     else:
