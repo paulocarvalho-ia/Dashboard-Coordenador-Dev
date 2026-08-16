@@ -441,19 +441,40 @@ if opcao == "🏠 Visão Geral":
     df_ytd = df_historico[(df_historico['Ano'] == ano_ytd) & (df_historico['MŒs'] <= mes_num)]
     ytd_total = df_ytd['codigo_cliente'].nunique()
 
-    chart_data = pd.DataFrame({
-        'Mês': list(mensal_pos['Mês']) + ['YTD'],
-        'Clientes Positivados': list(mensal_pos['Clientes Positivados']) + [ytd_total]
+    # Gráfico com eixo secundário para YTD
+    df_meses = pd.DataFrame({
+        'Mês': list(mensal_pos['Mês']),
+        'Clientes Positivados': list(mensal_pos['Clientes Positivados'])
     })
+    ytd_valor = ytd_total
 
-    colors = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_data['Mês']]
+    fig = go.Figure()
 
-    fig = go.Figure(go.Bar(
-        x=chart_data['Mês'],
-        y=chart_data['Clientes Positivados'],
-        marker_color=colors
+    # Barras mensais (eixo esquerdo)
+    fig.add_trace(go.Bar(
+        x=df_meses['Mês'],
+        y=df_meses['Clientes Positivados'],
+        marker_color='#2E8B57',
+        name='Mensal',
+        yaxis='y'
     ))
-    fig.update_layout(title='Positivação Carteira Ativa (Mensal + YTD)', yaxis_title='Clientes Positivados')
+
+    # Barra YTD (eixo direito)
+    fig.add_trace(go.Bar(
+        x=['YTD'],
+        y=[ytd_valor],
+        marker_color='#1a3a4a',
+        name='YTD',
+        yaxis='y2'
+    ))
+
+    fig.update_layout(
+        title='Positivação Carteira Ativa (Mensal + YTD)',
+        yaxis=dict(title='Clientes Mensais'),
+        yaxis2=dict(title='Clientes YTD', overlaying='y', side='right'),
+        barmode='group',
+        legend=dict(x=0.01, y=0.99)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     if vendedor_selecionado != "Todos":
@@ -682,19 +703,37 @@ elif opcao == "🟢 Softys Falcon":
 
         ytd_total = df_softys_ano['codigo_cliente'].nunique()
 
-        chart_softys = pd.DataFrame({
-            'Mês': list(monthly_totals['Mês']) + ['YTD'],
-            'Clientes': list(monthly_totals['Clientes']) + [ytd_total]
-        })
+        # Gráfico com eixo secundário para YTD
+        df_mensal_softys = monthly_totals[['Mês', 'Clientes']].copy()
+        ytd_softys_valor = ytd_total
 
-        colors_softys = ['#2E8B57' if mes != 'YTD' else '#1a3a4a' for mes in chart_softys['Mês']]
+        fig_softys = go.Figure()
 
-        fig_softys = go.Figure(go.Bar(
-            x=chart_softys['Mês'],
-            y=chart_softys['Clientes'],
-            marker_color=colors_softys
+        # Barras mensais (eixo esquerdo)
+        fig_softys.add_trace(go.Bar(
+            x=df_mensal_softys['Mês'],
+            y=df_mensal_softys['Clientes'],
+            marker_color='#2E8B57',
+            name='Mensal',
+            yaxis='y'
         ))
-        fig_softys.update_layout(title='Positivação Softys Falcon (Mensal + YTD)', yaxis_title='Clientes')
+
+        # Barra YTD (eixo direito)
+        fig_softys.add_trace(go.Bar(
+            x=['YTD'],
+            y=[ytd_softys_valor],
+            marker_color='#1a3a4a',
+            name='YTD',
+            yaxis='y2'
+        ))
+
+        fig_softys.update_layout(
+            title='Positivação Softys Falcon (Mensal + YTD)',
+            yaxis=dict(title='Clientes Mensais'),
+            yaxis2=dict(title='Clientes YTD', overlaying='y', side='right'),
+            barmode='group',
+            legend=dict(x=0.01, y=0.99)
+        )
         st.plotly_chart(fig_softys, use_container_width=True)
 
         pivot_mensal = df_softys_ano.pivot_table(index='Categoria', columns='MŒs_Ano', 
@@ -945,7 +984,7 @@ elif opcao == "🟤 Cenoura & Bronze":
         st.warning("Nenhum dado de Cenoura & Bronze para os filtros atuais.")
 
 # ============================================================
-# PÁGINA: BATALHA NAVAL (Geral) - COM INTERVALO DE MESES E CORREÇÕES
+# PÁGINA: BATALHA NAVAL (Geral) - SEM YTD (conforme solicitado)
 # ============================================================
 elif opcao == "📋 Batalha Naval":
     meses_batalha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
@@ -1006,7 +1045,7 @@ elif opcao == "📋 Batalha Naval":
                                mime='application/pdf', use_container_width=True)
 
 # ============================================================
-# PÁGINA: FICHA DO CLIENTE - COM INTERVALO DE MESES E CORES
+# PÁGINA: FICHA DO CLIENTE - SEM YTD (conforme solicitado)
 # ============================================================
 elif opcao == "🔍 Ficha do Cliente":
     meses_ficha = sorted(df_relatorio_base['MŒs_Ano'].dropna().unique())
